@@ -1,0 +1,42 @@
+# Blue Point OS — Reverse Proxy مع HTTPS تلقائي (Let's Encrypt)
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# رؤوس أمان إضافية فوق ما يضبطه التطبيق
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# الملفات الثابتة تُخزَّن مؤقتًا، وباقي المحتوى لا يُخزَّن (بيانات خاصة)
+	@static path /_next/static/* /fonts/* /brand/*
+	header @static Cache-Control "public, max-age=31536000, immutable"
+
+	@private not path /_next/static/* /fonts/* /brand/*
+	header @private Cache-Control "private, no-store"
+
+	# حد لحجم الرفع مطابق لإعداد التطبيق
+	request_body {
+		max_size 30MB
+	}
+
+	reverse_proxy app:3000 {
+		health_uri /api/health
+		health_interval 30s
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 20mb
+			roll_keep 10
+		}
+		format json
+	}
+}
+
+# إعادة توجيه HTTP إلى HTTPS يتم تلقائيًا بواسطة Caddy.

@@ -1,0 +1,144 @@
+# Blue Point OS — منظومة الإنتاج
+# التشغيل: docker compose --env-file .env.production up -d
+# لا يُعرض للعامة سوى Caddy (80/443). قاعدة البيانات على شبكة داخلية فقط.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bluepoint}
+      POSTGRES_USER: ${POSTGRES_USER:-bluepoint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD مطلوب}
+      # ترتيب حروف متوافق مع العربية
+      LANG: C.UTF-8
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # لا ports هنا إطلاقًا — قاعدة البيانات غير مكشوفة للإنترنت.
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-bluepoint} -d ${POSTGRES_DB:-bluepoint}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  migrate:
+    build: { context: ., dockerfile: Dockerfile }
+    restart: 'no'
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [internal]
+
+  app:
+    build: { context: ., dockerfile: Dockerfile }
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      APP_URL: ${APP_URL}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET مطلوب}
+      FILE_SIGNING_SECRET: ${FILE_SIGNING_SECRET:?FILE_SIGNING_SECRET مطلوب}
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-240}
+      SESSION_ABSOLUTE_HOURS: ${SESSION_ABSOLUTE_HOURS:-168}
+      STORAGE_DIR: /app/storage
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+      CHROMIUM_PATH: /usr/bin/chromium
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    volumes:
+      - storage:/app/storage
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    networks: [internal]
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1500m
+
+  worker:
+    build: { context: ., dockerfile: Dockerfile }
+    restart: unless-stopped
+    command: ['npx', 'tsx', '--conditions=react-server', 'src/worker/index.ts']
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      APP_URL: ${APP_URL}
+      SESSION_SECRET: ${SESSION_SECRET}
+      FILE_SIGNING_SECRET: ${FILE_SIGNING_SECRET}
+      STORAGE_DIR: /app/storage
+      WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-300}
+    volumes:
+      - storage:/app/storage
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    networks: [internal]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN مطلوب}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app: { condition: service_started }
+    networks: [internal, public]
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-bluepoint}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-bluepoint}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:-}
+    volumes:
+      - ./scripts:/scripts:ro
+      - backups:/backups
+      - storage:/app/storage:ro
+    entrypoint: ['/bin/sh', '/scripts/backup-loop.sh']
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [internal]
+
+volumes:
+  db_data:
+  storage:
+  backups:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
+    internal: true
+  public:

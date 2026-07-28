@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { formatMoney, formatNumber, formatPercent } from '@/lib/format';
 
 /**
  * رسوم SVG خفيفة بلا مكتبات خارجية — تُستخدم فقط عندما تضيف وضوحًا حقيقيًا.
@@ -24,19 +25,40 @@ export interface Point {
   value: number;
 }
 
+/**
+ * صيغة عرض القيم — نص وليس دالة، حتى تعبر حدود Server → Client Components.
+ * (تمرير دالة من Server Component غير مدعوم في React Server Components.)
+ */
+export type ValueFormat = 'number' | 'money' | 'money-compact' | 'percent';
+
+export function formatChartValue(value: number, format: ValueFormat = 'number'): string {
+  switch (format) {
+    case 'money':
+      // قيم الرسوم تصل بالوحدة الكبرى، والدالة تتوقع الوحدة الصغرى.
+      return formatMoney(Math.round(value * 100), 'EGP', 'ar');
+    case 'money-compact':
+      return formatMoney(Math.round(value * 100), 'EGP', 'ar', { compact: true });
+    case 'percent':
+      return formatPercent(value);
+    default:
+      return formatNumber(Math.round(value));
+  }
+}
+
 export function BarChart({
   data,
   height = 180,
-  formatValue = (v: number) => v.toLocaleString('en-US'),
+  format = 'number',
   className,
   horizontal,
 }: {
   data: Point[];
   height?: number;
-  formatValue?: (v: number) => string;
+  format?: ValueFormat;
   className?: string;
   horizontal?: boolean;
 }) {
+  const formatValue = (v: number) => formatChartValue(v, format);
   const max = Math.max(1, ...data.map((d) => d.value));
   if (data.length === 0) {
     return <EmptyChart className={className} />;
@@ -91,14 +113,15 @@ export function BarChart({
 export function LineChart({
   data,
   height = 160,
-  formatValue = (v: number) => v.toLocaleString('en-US'),
+  format = 'number',
   className,
 }: {
   data: Point[];
   height?: number;
-  formatValue?: (v: number) => string;
+  format?: ValueFormat;
   className?: string;
 }) {
+  const formatValue = (v: number) => formatChartValue(v, format);
   if (data.length < 2) return <EmptyChart className={className} />;
   const max = Math.max(...data.map((d) => d.value), 1);
   const min = Math.min(...data.map((d) => d.value), 0);
@@ -195,7 +218,7 @@ export function DonutChart({
               style={{ background: PALETTE[i % PALETTE.length] }}
             />
             <span className="min-w-0 flex-1 truncate text-ink-muted">{d.label}</span>
-            <span className="num text-ink">{d.value.toLocaleString('en-US')}</span>
+            <span className="num text-ink">{formatNumber(d.value)}</span>
             <span className="num w-10 text-end text-ink-faint">
               {Math.round((d.value / total) * 100)}%
             </span>

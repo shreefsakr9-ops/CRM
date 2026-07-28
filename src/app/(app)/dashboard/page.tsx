@@ -108,10 +108,7 @@ export default async function DashboardPage() {
             <Card className="lg:col-span-2">
               <CardHeader title="التحصيلات خلال ١٢ شهرًا" subtitle="بالجنيه المصري" />
               <CardBody>
-                <LineChart
-                  data={executive.revenueTrend}
-                  formatValue={(v) => formatNumber(Math.round(v))}
-                />
+                <LineChart data={executive.revenueTrend} format="money-compact" />
               </CardBody>
             </Card>
             <Card>
@@ -139,7 +136,7 @@ export default async function DashboardPage() {
             <Card>
               <CardHeader title="أكثر الخدمات مبيعًا" subtitle="بقيمة الصفقات الناجحة" />
               <CardBody>
-                <BarChart horizontal data={executive.topServices} formatValue={(v) => formatNumber(v)} />
+                <BarChart horizontal data={executive.topServices} format="money-compact" />
               </CardBody>
             </Card>
             <Card>
@@ -167,7 +164,7 @@ export default async function DashboardPage() {
             <Card className="lg:col-span-2">
               <CardHeader title="قيمة الصفقات المفتوحة حسب المرحلة" subtitle="بالجنيه المصري" />
               <CardBody>
-                <BarChart data={sales.byStage} formatValue={(v) => formatNumber(Math.round(v))} />
+                <BarChart data={sales.byStage} format="money-compact" />
               </CardBody>
             </Card>
             <Card>

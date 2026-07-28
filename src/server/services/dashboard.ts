@@ -229,11 +229,12 @@ async function salesBlock(user: CurrentUser, now: Date, startOfMonth: Date): Pro
     take: 300,
     orderBy: { createdAt: 'desc' },
   });
-  const avgResponseHours = responded.length
-    ? responded.reduce(
-        (s, l) => s + (l.firstContactAt!.getTime() - l.createdAt.getTime()) / 3_600_000,
-        0,
-      ) / responded.length
+  // نتجاهل القيم السالبة (بيانات مستوردة أو مصححة يدويًا) حتى لا يظهر زمن استجابة سالب.
+  const responseHours = responded
+    .map((l) => (l.firstContactAt!.getTime() - l.createdAt.getTime()) / 3_600_000)
+    .filter((h) => h >= 0);
+  const avgResponseHours = responseHours.length
+    ? responseHours.reduce((a, b) => a + b, 0) / responseHours.length
     : null;
 
   const wonRevenue = await prisma.deal.aggregate({

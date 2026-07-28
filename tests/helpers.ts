@@ -1,0 +1,146 @@
+import { vi } from 'vitest';
+import { PrismaClient } from '@prisma/client';
+import { hashPassword } from '@/server/auth/password';
+import { buildPermissionMap, type Scope } from '@/server/auth/permissions';
+import type { CurrentUser } from '@/server/auth/session';
+
+export const prisma = new PrismaClient();
+
+/** المستخدم الفعّال في الاختبار الحالي — يقرأه mock الجلسة. */
+let activeUser: CurrentUser | null = null;
+
+export function getActiveUser() {
+  return activeUser;
+}
+
+export function clearUser() {
+  activeUser = null;
+}
+
+/**
+ * تُستدعى من كل ملف اختبار قبل الاستيرادات التي تعتمد على الجلسة.
+ * تستبدل طبقة الجلسة بحيث تعيد المستخدم الذي يحدده الاختبار.
+ */
+export function mockSession() {
+  vi.mock('@/server/auth/session', async () => {
+    const helpers = await import('./helpers');
+    return {
+      SESSION_COOKIE: 'bp_session',
+      getCurrentUser: async () => helpers.getActiveUser(),
+      getRequestMeta: async () => ({ ip: '127.0.0.1', userAgent: 'vitest' }),
+      createSession: async () => 'test-token',
+      destroyCurrentSession: async () => undefined,
+      revokeAllSessions: async () => undefined,
+    };
+  });
+}
+
+/** يبني هوية مستخدم كاملة من قاعدة البيانات (نفس منطق الإنتاج). */
+export async function actAs(email: string): Promise<CurrentUser> {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { email },
+    include: { role: { include: { permissions: true } }, overrides: true },
+  });
+
+  const teamRows = await prisma.$queryRaw<{ id: string }[]>`
+    WITH RECURSIVE team AS (
+      SELECT id FROM users WHERE id = ${user.id}
+      UNION
+      SELECT u.id FROM users u JOIN team t ON u."managerId" = t.id
+    )
+    SELECT id FROM team
+  `;
+
+  activeUser = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    nameEn: user.nameEn,
+    avatarUrl: user.avatarUrl,
+    roleId: user.roleId,
+    roleKey: user.role.key,
+    departmentId: user.departmentId,
+    locale: user.locale,
+    timezone: user.timezone,
+    mustResetPassword: user.mustResetPassword,
+    permissions: buildPermissionMap(
+      user.role.permissions.map((p) => ({
+        module: p.module,
+        action: p.action,
+        scope: p.scope as Scope,
+      })),
+      user.overrides.map((o) => ({
+        module: o.module,
+        action: o.action,
+        scope: o.scope as Scope,
+        allow: o.allow,
+      })),
+    ),
+    teamIds: teamRows.map((r) => r.id),
+    sessionId: 'test-session',
+  };
+  return activeUser;
+}
+
+export async function createTestUser(params: {
+  email: string;
+  name: string;
+  roleKey: string;
+  managerEmail?: string;
+}) {
+  const role = await prisma.role.findUniqueOrThrow({ where: { key: params.roleKey } });
+  const manager = params.managerEmail
+    ? await prisma.user.findUnique({ where: { email: params.managerEmail } })
+    : null;
+
+  return prisma.user.upsert({
+    where: { email: params.email },
+    create: {
+      email: params.email,
+      name: params.name,
+      passwordHash: await hashPassword('TestPass#2026'),
+      roleId: role.id,
+      managerId: manager?.id,
+    },
+    update: { roleId: role.id, managerId: manager?.id, isActive: true, deletedAt: null },
+  });
+}
+
+/** ينظّف بيانات الأعمال بين ملفات الاختبار مع إبقاء البيانات المرجعية. */
+export async function resetBusinessData() {
+  await prisma.$transaction([
+    prisma.notification.deleteMany(),
+    prisma.auditLog.deleteMany(),
+    prisma.activity.deleteMany(),
+    prisma.commentMention.deleteMany(),
+    prisma.comment.deleteMany(),
+    prisma.timeEntry.deleteMany(),
+    prisma.checklistItem.deleteMany(),
+    prisma.taskDependency.deleteMany(),
+    prisma.taskAssignee.deleteMany(),
+    prisma.approval.deleteMany(),
+    prisma.revisionRequest.deleteMany(),
+    prisma.task.deleteMany(),
+    prisma.deliverable.deleteMany(),
+    prisma.milestone.deleteMany(),
+    prisma.projectService.deleteMany(),
+    prisma.projectMember.deleteMany(),
+    prisma.expense.deleteMany(),
+    prisma.payment.deleteMany(),
+    prisma.invoiceItem.deleteMany(),
+    prisma.invoice.deleteMany(),
+    prisma.project.deleteMany(),
+    prisma.contractService.deleteMany(),
+    prisma.contract.deleteMany(),
+    prisma.quotationInstallment.deleteMany(),
+    prisma.quotationItem.deleteMany(),
+    prisma.quotation.deleteMany(),
+    prisma.stageHistory.deleteMany(),
+    prisma.followUp.deleteMany(),
+    prisma.deal.deleteMany(),
+    prisma.lead.deleteMany(),
+    prisma.contact.deleteMany(),
+    prisma.client.deleteMany(),
+    prisma.fileObject.deleteMany(),
+  ]);
+}

@@ -441,6 +441,8 @@ async function seedDemoBusinessData() {
         expectedCloseDate: daysAhead(20 - i),
         lossReasonId: spec.loss ? lossReasons[spec.loss] : null,
         createdById: spec.owner,
+        // تاريخ الإنشاء قبل أول تواصل حتى تكون مؤشرات زمن الاستجابة واقعية.
+        createdAt: daysAgo(22 - i),
       },
     });
     leadIds[spec.company] = lead.id;
