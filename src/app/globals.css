@@ -1,0 +1,202 @@
+@import '@fontsource-variable/cairo/index.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Blue Point Design Tokens ──────────────────────────────────
+   الألوان بصيغة "R G B" حتى تعمل مع Tailwind alpha (<alpha-value>).
+   يمكن تجاوزها في وقت التشغيل من الإعدادات عبر inline style على :root. */
+:root {
+  --bp-navy-950: 6 15 27;
+  --bp-navy-900: 11 26 47;
+  --bp-navy-800: 16 35 61;
+  --bp-navy-700: 23 48 80;
+  --bp-navy-600: 32 64 102;
+
+  --bp-blue: 44 123 229;
+  --bp-blue-hover: 30 105 205;
+  --bp-blue-soft: 26 62 112;
+
+  --bp-cyan: 63 200 245;
+  --bp-cyan-soft: 22 86 112;
+
+  --bp-red: 245 51 63;
+
+  --bp-ink: 236 243 252;
+  --bp-ink-muted: 156 176 201;
+  --bp-ink-faint: 105 126 152;
+
+  --bp-surface: 11 26 47;
+  --bp-surface-raised: 16 35 61;
+  --bp-surface-sunken: 8 20 36;
+  --bp-line: 30 55 88;
+
+  --bp-ok: 34 197 122;
+  --bp-warn: 245 176 65;
+  --bp-danger: 244 78 88;
+  --bp-info: 96 165 250;
+
+  --bp-radius-sm: 6px;
+  --bp-radius: 10px;
+  --bp-radius-lg: 14px;
+  --bp-radius-xl: 20px;
+
+  --bp-space-page: 1.25rem;
+  --bp-header-h: 60px;
+  --bp-sidebar-w: 264px;
+
+  --font-cairo: 'Cairo Variable', 'Cairo', system-ui, sans-serif;
+
+  color-scheme: dark;
+}
+
+/* الوضع الفاتح — متاح للطباعة والتقارير وللمستخدمين الذين يفضلونه */
+:root[data-theme='light'] {
+  --bp-ink: 15 30 50;
+  --bp-ink-muted: 82 100 124;
+  --bp-ink-faint: 130 148 170;
+  --bp-surface: 255 255 255;
+  --bp-surface-raised: 248 250 253;
+  --bp-surface-sunken: 240 244 249;
+  --bp-line: 220 228 238;
+  --bp-blue-soft: 222 235 253;
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--bp-line));
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-navy-950 text-ink font-sans antialiased;
+    font-feature-settings: 'ss01' on;
+    /* دعم آمن لـ Safari على iOS */
+    min-height: 100dvh;
+  }
+
+  :root[data-theme='light'] body {
+    @apply bg-surface-sunken;
+  }
+
+  /* الأرقام دائمًا لاتينية داخل الجداول والمبالغ لسهولة القراءة السريعة */
+  .num,
+  table td,
+  input[type='number'] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: rgb(var(--bp-blue) / 0.35);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--bp-navy-600));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--bp-blue) / 0.7);
+    background-clip: content-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--bp-cyan));
+    outline-offset: 2px;
+    border-radius: var(--bp-radius-sm);
+  }
+
+  /* منع الجسم من التمرير الأفقي — الجداول العريضة تمرَّر داخل حاويتها */
+  body {
+    overflow-x: hidden;
+  }
+}
+
+@layer components {
+  .bp-card {
+    @apply rounded-lg border border-line bg-surface-raised shadow-card;
+  }
+
+  .bp-glass {
+    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.015));
+    backdrop-filter: blur(10px);
+  }
+
+  .bp-input {
+    @apply w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink
+           placeholder:text-ink-faint transition
+           focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30
+           disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .bp-label {
+    @apply mb-1.5 block text-[13px] font-medium text-ink-muted;
+  }
+
+  .bp-hint {
+    @apply mt-1 text-xs text-ink-faint;
+  }
+
+  .bp-error {
+    @apply mt-1 text-xs text-danger;
+  }
+
+  .bp-skeleton {
+    @apply relative overflow-hidden rounded-md bg-navy-800;
+  }
+  .bp-skeleton::after {
+    content: '';
+    @apply absolute inset-0 animate-shimmer;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.06), transparent);
+  }
+
+  /* شريط التمرير الأفقي للجداول على الموبايل */
+  .bp-table-scroll {
+    @apply -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0;
+    scrollbar-width: thin;
+  }
+
+  .bp-gradient-text {
+    background: linear-gradient(120deg, rgb(var(--bp-blue)), rgb(var(--bp-cyan)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  /* تدوير الأيقونات الاتجاهية تلقائيًا في RTL */
+  [dir='rtl'] .flip-rtl {
+    transform: scaleX(-1);
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

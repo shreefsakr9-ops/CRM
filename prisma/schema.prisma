@@ -1,0 +1,1715 @@
+// Blue Point OS — Database Schema
+// كل المبالغ المالية BigInt بوحدة العملة الصغرى (قروش/هللات/سنتات) — لا Floating Point.
+// كل النسب Decimal(9,4). كل التواريخ timestamptz (UTC).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────
+
+enum EntityType {
+  LEAD
+  DEAL
+  CLIENT
+  CONTACT
+  QUOTATION
+  CONTRACT
+  PROJECT
+  TASK
+  DELIVERABLE
+  MILESTONE
+  INVOICE
+  PAYMENT
+  EXPENSE
+  USER
+  ROLE
+  SETTING
+  FILE
+  APPROVAL
+  SERVICE
+}
+
+enum PipelineKind {
+  LEAD
+  DEAL
+}
+
+enum LeadStatus {
+  NEW
+  WORKING
+  QUALIFIED
+  CONVERTED
+  LOST
+  ARCHIVED
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ActivityType {
+  CALL
+  WHATSAPP
+  EMAIL
+  MEETING
+  NOTE
+  STATUS_CHANGE
+  ASSIGNMENT
+  QUOTATION
+  FOLLOW_UP
+  FILE
+  SYSTEM
+  COMMENT
+  APPROVAL
+  PAYMENT
+}
+
+enum FollowUpStatus {
+  PENDING
+  DONE
+  MISSED
+  CANCELLED
+}
+
+enum ClientType {
+  COMPANY
+  INDIVIDUAL
+}
+
+enum ClientStatus {
+  PROSPECT
+  ACTIVE
+  PAUSED
+  CHURNED
+}
+
+enum ContactType {
+  MAIN
+  DECISION_MAKER
+  FINANCE
+  MARKETING
+  APPROVAL
+  TECHNICAL
+}
+
+enum BillingType {
+  ONE_TIME
+  MONTHLY_RETAINER
+  RECURRING
+  PACKAGE
+  HOURLY
+}
+
+enum QuotationStatus {
+  DRAFT
+  PENDING_INTERNAL_APPROVAL
+  APPROVED_INTERNALLY
+  SENT
+  UNDER_REVIEW
+  REVISED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum DiscountType {
+  NONE
+  PERCENT
+  AMOUNT
+}
+
+enum ContractStatus {
+  DRAFT
+  AWAITING_SIGNATURE
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+  RENEWED
+  SUSPENDED
+  TERMINATED
+}
+
+enum ProjectStatus {
+  ONBOARDING
+  PLANNING
+  IN_PROGRESS
+  INTERNAL_REVIEW
+  CLIENT_REVIEW
+  ON_HOLD
+  AT_RISK
+  COMPLETED
+  CANCELLED
+}
+
+enum ProgressMode {
+  TASKS
+  DELIVERABLES
+  MANUAL
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  WAITING_INTERNAL_REVIEW
+  REVISIONS_REQUIRED
+  WAITING_CLIENT
+  APPROVED
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
+enum DelayReason {
+  NONE
+  INTERNAL_DELAY
+  CLIENT_WAITING
+  APPROVED_EXTENSION
+  BLOCKED
+  OVERDUE_NO_REASON
+}
+
+enum DeliverableStatus {
+  PLANNED
+  IN_PRODUCTION
+  INTERNAL_REVIEW
+  CLIENT_REVIEW
+  APPROVED
+  DELIVERED
+  CANCELLED
+}
+
+enum RevisionSource {
+  INTERNAL
+  CLIENT
+}
+
+enum RevisionStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  INSTAPAY
+  VODAFONE_CASH
+  CHEQUE
+  CARD
+  PAYPAL
+  OTHER
+}
+
+enum ExpenseCategory {
+  FREELANCER
+  PRODUCTION
+  TRANSPORTATION
+  TOOLS
+  MEDIA_SPEND
+  PRINTING
+  OTHER
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  COMMENT_ADDED
+  USER_MENTIONED
+  REVISION_REQUESTED
+  APPROVAL_REQUESTED
+  WORK_APPROVED
+  LEAD_ASSIGNED
+  LEAD_NOT_CONTACTED
+  FOLLOW_UP_DUE
+  FOLLOW_UP_OVERDUE
+  QUOTATION_EXPIRING
+  CONTRACT_EXPIRING
+  INVOICE_DUE
+  INVOICE_OVERDUE
+  PROJECT_AT_RISK
+  CLIENT_INACTIVE
+  RENEWAL_DUE
+  SECURITY
+}
+
+enum DigestFrequency {
+  NONE
+  DAILY
+  WEEKLY
+}
+
+enum PermissionScope {
+  OWN
+  TEAM
+  ALL
+}
+
+enum JobStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+// ─────────────────────────────────────────────────────────────
+// Identity, Roles & Permissions
+// ─────────────────────────────────────────────────────────────
+
+model Role {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  nameAr      String
+  nameEn      String
+  description String?
+  isSystem    Boolean          @default(false)
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
+  permissions RolePermission[]
+  users       User[]
+
+  @@map("roles")
+}
+
+model RolePermission {
+  id     String          @id @default(cuid())
+  roleId String
+  module String
+  action String
+  scope  PermissionScope @default(OWN)
+  role   Role            @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, module, action])
+  @@index([roleId])
+  @@map("role_permissions")
+}
+
+model UserPermissionOverride {
+  id     String          @id @default(cuid())
+  userId String
+  module String
+  action String
+  scope  PermissionScope @default(OWN)
+  allow  Boolean         @default(true)
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, module, action])
+  @@map("user_permission_overrides")
+}
+
+model Department {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  nameAr    String
+  nameEn    String
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  users     User[]
+  tasks     Task[]
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  deletedAt DateTime? @db.Timestamptz(3)
+
+  @@map("departments")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String
+  name               String
+  nameEn             String?
+  phone              String?
+  jobTitle           String?
+  avatarUrl          String?
+  roleId             String
+  departmentId       String?
+  managerId          String?
+  isActive           Boolean   @default(true)
+  mustResetPassword  Boolean   @default(false)
+  twoFactorEnabled   Boolean   @default(false)
+  twoFactorSecret    String?
+  locale             String    @default("ar")
+  timezone           String    @default("Africa/Cairo")
+  lastLoginAt        DateTime? @db.Timestamptz(3)
+  passwordChangedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime? @db.Timestamptz(3)
+  salesTargetMinor   BigInt    @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime? @db.Timestamptz(3)
+
+  role        Role                     @relation(fields: [roleId], references: [id])
+  department  Department?              @relation(fields: [departmentId], references: [id])
+  manager     User?                    @relation("UserManager", fields: [managerId], references: [id])
+  reports     User[]                   @relation("UserManager")
+  overrides   UserPermissionOverride[]
+  sessions    Session[]
+  resetTokens PasswordResetToken[]
+
+  leadsAssigned      Lead[]                 @relation("LeadAssignee")
+  dealsOwned         Deal[]                 @relation("DealOwner")
+  clientsManaged     Client[]               @relation("ClientAccountManager")
+  clientsSold        Client[]               @relation("ClientSalesOwner")
+  quotationsPrepared Quotation[]            @relation("QuotationPreparedBy")
+  quotationsApproved Quotation[]            @relation("QuotationApprovedBy")
+  contractsOwned     Contract[]             @relation("ContractOwner")
+  projectsOwned      Project[]              @relation("ProjectOwner")
+  projectsManaged    Project[]              @relation("ProjectAccountManager")
+  projectMemberships ProjectMember[]
+  tasksCreated       Task[]                 @relation("TaskCreator")
+  tasksReviewing     Task[]                 @relation("TaskReviewer")
+  taskAssignments    TaskAssignee[]
+  timeEntries        TimeEntry[]
+  comments           Comment[]
+  mentions           CommentMention[]
+  notifications      Notification[]
+  notifPrefs         NotificationPreference[]
+  auditLogs          AuditLog[]
+  activities         Activity[]
+  followUps          FollowUp[]             @relation("FollowUpAssignee")
+  filesUploaded      FileObject[]
+  paymentsRecorded   Payment[]
+  expensesRecorded   Expense[]
+  savedViews         SavedView[]
+  favorites          Favorite[]
+  recentItems        RecentItem[]
+  revisionsRequested RevisionRequest[]      @relation("RevisionRequester")
+  revisionsAssigned  RevisionRequest[]      @relation("RevisionAssignee")
+  approvals          Approval[]
+  stageMoves         StageHistory[]
+  downloads          FileDownload[]
+
+  @@index([roleId])
+  @@index([departmentId])
+  @@index([managerId])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  lastSeenAt DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt  DateTime  @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String?
+  success   Boolean
+  reason    String?
+  userAgent String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_attempts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Settings & Reference data
+// ─────────────────────────────────────────────────────────────
+
+model Setting {
+  key       String   @id
+  category  String   @default("general")
+  value     Json
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  updatedBy String?
+
+  @@index([category])
+  @@map("settings")
+}
+
+model Currency {
+  code      String  @id // ISO-4217
+  nameAr    String
+  nameEn    String
+  symbolAr  String
+  symbolEn  String
+  decimals  Int     @default(2)
+  isBase    Boolean @default(false)
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  @@map("currencies")
+}
+
+model Country {
+  code           String    @id // ISO-3166 alpha-2
+  nameAr         String
+  nameEn         String
+  dialCode       String
+  defaultCurrency String   @default("EGP")
+  isActive       Boolean   @default(true)
+  taxRates       TaxRate[]
+
+  @@map("countries")
+}
+
+model TaxRate {
+  id          String   @id @default(cuid())
+  nameAr      String
+  nameEn      String
+  rate        Decimal  @db.Decimal(9, 4) // 14.0000 = 14%
+  countryCode String?
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  country     Country? @relation(fields: [countryCode], references: [code])
+
+  quotationItems QuotationItem[]
+  invoiceItems   InvoiceItem[]
+
+  @@map("tax_rates")
+}
+
+model NumberSequence {
+  key        String   @id // QUOTATION | INVOICE | CONTRACT | PROJECT
+  prefix     String
+  year       Int
+  lastNumber Int      @default(0)
+  padding    Int      @default(4)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("number_sequences")
+}
+
+model PipelineStage {
+  id          String       @id @default(cuid())
+  pipeline    PipelineKind @default(DEAL)
+  key         String
+  nameAr      String
+  nameEn      String
+  sortOrder   Int          @default(0)
+  probability Decimal      @default(0) @db.Decimal(9, 4) // 0..100
+  isWon       Boolean      @default(false)
+  isLost      Boolean      @default(false)
+  isActive    Boolean      @default(true)
+  color       String       @default("#2C7BE5")
+
+  leads     Lead[]
+  deals     Deal[]
+  fromMoves StageHistory[] @relation("FromStage")
+  toMoves   StageHistory[] @relation("ToStage")
+
+  @@unique([pipeline, key])
+  @@map("pipeline_stages")
+}
+
+model LeadSource {
+  id        String  @id @default(cuid())
+  key       String  @unique
+  nameAr    String
+  nameEn    String
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+  leads     Lead[]
+
+  @@map("lead_sources")
+}
+
+model LossReason {
+  id       String  @id @default(cuid())
+  key      String  @unique
+  nameAr   String
+  nameEn   String
+  isActive Boolean @default(true)
+  leads    Lead[]
+  deals    Deal[]
+
+  @@map("loss_reasons")
+}
+
+model Tag {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  color     String      @default("#2C7BE5")
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  entities  EntityTag[]
+
+  @@map("tags")
+}
+
+model EntityTag {
+  id         String     @id @default(cuid())
+  tagId      String
+  entityType EntityType
+  entityId   String
+  tag        Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@map("entity_tags")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CRM: Leads, Activities, Follow-ups, Deals
+// ─────────────────────────────────────────────────────────────
+
+model Lead {
+  id                 String     @id @default(cuid())
+  fullName           String
+  phone              String?
+  phoneNormalized    String?
+  whatsapp           String?
+  whatsappNormalized String?
+  email              String?
+  emailNormalized    String?
+  companyName        String?
+  businessType       String?
+  countryCode        String?
+  city               String?
+  sourceId           String?
+  campaign           String?
+  interestedServiceId String?
+  estimatedValueMinor BigInt    @default(0)
+  currency           String     @default("EGP")
+  assignedToId       String?
+  score              Int        @default(0)
+  priority           Priority   @default(MEDIUM)
+  status             LeadStatus @default(NEW)
+  stageId            String?
+  firstContactAt     DateTime?  @db.Timestamptz(3)
+  lastContactAt      DateTime?  @db.Timestamptz(3)
+  nextFollowUpAt     DateTime?  @db.Timestamptz(3)
+  expectedCloseDate  DateTime?  @db.Timestamptz(3)
+  noFollowUpReason   String?
+  lossReasonId       String?
+  lostNotes          String?
+  notes              String?
+  convertedClientId  String?
+  convertedAt        DateTime?  @db.Timestamptz(3)
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime?  @db.Timestamptz(3)
+  deletedById        String?
+
+  source            LeadSource?    @relation(fields: [sourceId], references: [id])
+  interestedService Service?       @relation(fields: [interestedServiceId], references: [id])
+  assignedTo        User?          @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  stage             PipelineStage? @relation(fields: [stageId], references: [id])
+  lossReason        LossReason?    @relation(fields: [lossReasonId], references: [id])
+  convertedClient   Client?        @relation(fields: [convertedClientId], references: [id])
+  deals             Deal[]
+  followUps         FollowUp[]
+  quotations        Quotation[]
+
+  @@index([assignedToId, status])
+  @@index([nextFollowUpAt])
+  @@index([phoneNormalized])
+  @@index([emailNormalized])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("leads")
+}
+
+model Activity {
+  id         String       @id @default(cuid())
+  entityType EntityType
+  entityId   String
+  type       ActivityType
+  subject    String
+  body       String?
+  meta       Json?
+  occurredAt DateTime     @default(now()) @db.Timestamptz(3)
+  durationMin Int?
+  outcome    String?
+  userId     String?
+  createdAt  DateTime     @default(now()) @db.Timestamptz(3)
+  user       User?        @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId, occurredAt])
+  @@index([userId, occurredAt])
+  @@map("activities")
+}
+
+model FollowUp {
+  id           String         @id @default(cuid())
+  leadId       String?
+  dealId       String?
+  clientId     String?
+  title        String
+  note         String?
+  dueAt        DateTime       @db.Timestamptz(3)
+  status       FollowUpStatus @default(PENDING)
+  assignedToId String
+  completedAt  DateTime?      @db.Timestamptz(3)
+  outcome      String?
+  createdById  String?
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @db.Timestamptz(3)
+
+  lead       Lead?   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  deal       Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  client     Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assignedTo User    @relation("FollowUpAssignee", fields: [assignedToId], references: [id])
+
+  @@index([assignedToId, status, dueAt])
+  @@index([leadId])
+  @@map("follow_ups")
+}
+
+model Deal {
+  id                String     @id @default(cuid())
+  title             String
+  leadId            String?
+  clientId          String?
+  serviceId         String?
+  valueMinor        BigInt     @default(0)
+  currency          String     @default("EGP")
+  probability       Decimal    @default(0) @db.Decimal(9, 4)
+  stageId           String
+  status            DealStatus @default(OPEN)
+  ownerId           String
+  expectedCloseDate DateTime?  @db.Timestamptz(3)
+  actualCloseDate   DateTime?  @db.Timestamptz(3)
+  competitor        String?
+  objections        String?
+  lossReasonId      String?
+  notes             String?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
+  deletedAt         DateTime?  @db.Timestamptz(3)
+
+  lead         Lead?          @relation(fields: [leadId], references: [id])
+  client       Client?        @relation(fields: [clientId], references: [id])
+  service      Service?       @relation(fields: [serviceId], references: [id])
+  stage        PipelineStage  @relation(fields: [stageId], references: [id])
+  owner        User           @relation("DealOwner", fields: [ownerId], references: [id])
+  lossReason   LossReason?    @relation(fields: [lossReasonId], references: [id])
+  quotations   Quotation[]
+  projects     Project[]
+  followUps    FollowUp[]
+  stageHistory StageHistory[]
+
+  @@index([stageId, ownerId])
+  @@index([ownerId, status])
+  @@index([expectedCloseDate])
+  @@index([deletedAt])
+  @@map("deals")
+}
+
+model StageHistory {
+  id                String   @id @default(cuid())
+  dealId            String
+  fromStageId       String?
+  toStageId         String
+  movedById         String
+  movedAt           DateTime @default(now()) @db.Timestamptz(3)
+  durationSeconds   Int? // مدة البقاء في المرحلة السابقة
+  note              String?
+
+  deal      Deal          @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromStage PipelineStage? @relation("FromStage", fields: [fromStageId], references: [id])
+  toStage   PipelineStage  @relation("ToStage", fields: [toStageId], references: [id])
+  movedBy   User           @relation(fields: [movedById], references: [id])
+
+  @@index([dealId, movedAt])
+  @@map("stage_history")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Clients & Contacts
+// ─────────────────────────────────────────────────────────────
+
+model Client {
+  id               String       @id @default(cuid())
+  legalName        String
+  brandName        String?
+  type             ClientType   @default(COMPANY)
+  industry         String?
+  countryCode      String?
+  city             String?
+  address          String?
+  taxNumber        String?
+  commercialReg    String?
+  website          String?
+  currency         String       @default("EGP")
+  accountManagerId String?
+  salesOwnerId     String?
+  status           ClientStatus @default(ACTIVE)
+  satisfaction     Int? // 1..5
+  renewalDate      DateTime?    @db.Timestamptz(3)
+  lastContactAt    DateTime?    @db.Timestamptz(3)
+  onboardedAt      DateTime?    @db.Timestamptz(3)
+  internalNotes    String?
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime     @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime?    @db.Timestamptz(3)
+
+  accountManager User?       @relation("ClientAccountManager", fields: [accountManagerId], references: [id])
+  salesOwner     User?       @relation("ClientSalesOwner", fields: [salesOwnerId], references: [id])
+  contacts       Contact[]
+  deals          Deal[]
+  quotations     Quotation[]
+  contracts      Contract[]
+  projects       Project[]
+  invoices       Invoice[]
+  payments       Payment[]
+  expenses       Expense[]
+  followUps      FollowUp[]
+  tasks          Task[]
+  leads          Lead[]
+
+  @@index([accountManagerId])
+  @@index([salesOwnerId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("clients")
+}
+
+model Contact {
+  id        String      @id @default(cuid())
+  clientId  String
+  name      String
+  position  String?
+  type      ContactType @default(MAIN)
+  phone     String?
+  whatsapp  String?
+  email     String?
+  isPrimary Boolean     @default(false)
+  notes     String?
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime    @updatedAt @db.Timestamptz(3)
+  deletedAt DateTime?   @db.Timestamptz(3)
+
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  quotations Quotation[]
+
+  @@index([clientId])
+  @@map("contacts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Service catalog
+// ─────────────────────────────────────────────────────────────
+
+model Service {
+  id                  String      @id @default(cuid())
+  code                String      @unique
+  nameAr              String
+  nameEn              String
+  description         String?
+  basePriceMinor      BigInt      @default(0)
+  currency            String      @default("EGP")
+  billingType         BillingType @default(ONE_TIME)
+  durationDays        Int?
+  defaultPaymentTerms String?
+  defaultTaxRateId    String?
+  departmentKeys      String[]    @default([])
+  isPackage           Boolean     @default(false)
+  isActive            Boolean     @default(true)
+  sortOrder           Int         @default(0)
+  createdAt           DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime    @updatedAt @db.Timestamptz(3)
+  deletedAt           DateTime?   @db.Timestamptz(3)
+
+  deliverables  ServiceDeliverable[]
+  packageItems  PackageItem[]        @relation("PackageParent")
+  inPackages    PackageItem[]        @relation("PackageChild")
+  prices        ServicePrice[]
+  quotationItems QuotationItem[]
+  deals         Deal[]
+  leads         Lead[]
+  templates     ProjectTemplate[]
+  projectLinks  ProjectService[]
+  contractLinks ContractService[]
+
+  @@index([isActive])
+  @@map("services")
+}
+
+model ServicePrice {
+  id          String @id @default(cuid())
+  serviceId   String
+  currency    String
+  countryCode String?
+  priceMinor  BigInt
+  service     Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, currency, countryCode])
+  @@map("service_prices")
+}
+
+model ServiceDeliverable {
+  id        String  @id @default(cuid())
+  serviceId String
+  nameAr    String
+  nameEn    String
+  quantity  Int     @default(1)
+  unit      String?
+  sortOrder Int     @default(0)
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([serviceId])
+  @@map("service_deliverables")
+}
+
+model PackageItem {
+  id        String  @id @default(cuid())
+  packageId String
+  serviceId String
+  quantity  Int     @default(1)
+  package   Service @relation("PackageParent", fields: [packageId], references: [id], onDelete: Cascade)
+  service   Service @relation("PackageChild", fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, serviceId])
+  @@map("package_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Quotations
+// ─────────────────────────────────────────────────────────────
+
+model Quotation {
+  id                 String          @id @default(cuid())
+  number             String          @unique
+  version            Int             @default(1)
+  parentId           String?
+  clientId           String?
+  leadId             String?
+  dealId             String?
+  contactId          String?
+  issueDate          DateTime        @db.Timestamptz(3)
+  expiryDate         DateTime        @db.Timestamptz(3)
+  currency           String          @default("EGP")
+  status             QuotationStatus @default(DRAFT)
+  subtotalMinor      BigInt          @default(0)
+  discountMinor      BigInt          @default(0)
+  taxMinor           BigInt          @default(0)
+  totalMinor         BigInt          @default(0)
+  headerDiscountType DiscountType    @default(NONE)
+  headerDiscountValue Decimal        @default(0) @db.Decimal(14, 4)
+  paymentTerms       String?
+  executionTerms     String?
+  validityNote       String?
+  notes              String?
+  termsAr            String?
+  termsEn            String?
+  preparedById       String
+  approvedById       String?
+  approvedAt         DateTime?       @db.Timestamptz(3)
+  sentAt             DateTime?       @db.Timestamptz(3)
+  acceptedAt         DateTime?       @db.Timestamptz(3)
+  rejectedAt         DateTime?       @db.Timestamptz(3)
+  rejectionReason    String?
+  createdAt          DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime        @updatedAt @db.Timestamptz(3)
+  deletedAt          DateTime?       @db.Timestamptz(3)
+
+  parent       Quotation?              @relation("QuotationVersions", fields: [parentId], references: [id])
+  versions     Quotation[]             @relation("QuotationVersions")
+  client       Client?                 @relation(fields: [clientId], references: [id])
+  lead         Lead?                   @relation(fields: [leadId], references: [id])
+  deal         Deal?                   @relation(fields: [dealId], references: [id])
+  contact      Contact?                @relation(fields: [contactId], references: [id])
+  preparedBy   User                    @relation("QuotationPreparedBy", fields: [preparedById], references: [id])
+  approvedBy   User?                   @relation("QuotationApprovedBy", fields: [approvedById], references: [id])
+  items        QuotationItem[]
+  installments QuotationInstallment[]
+  contracts    Contract[]
+  projects     Project[]
+  invoices     Invoice[]
+
+  @@index([clientId, status])
+  @@index([status, expiryDate])
+  @@index([deletedAt])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id             String       @id @default(cuid())
+  quotationId    String
+  serviceId      String?
+  nameAr         String
+  nameEn         String
+  description    String?
+  quantity       Decimal      @default(1) @db.Decimal(14, 4)
+  unitPriceMinor BigInt       @default(0)
+  discountType   DiscountType @default(NONE)
+  discountValue  Decimal      @default(0) @db.Decimal(14, 4)
+  taxRateId      String?
+  taxRate        Decimal      @default(0) @db.Decimal(9, 4)
+  subtotalMinor  BigInt       @default(0)
+  discountMinor  BigInt       @default(0)
+  taxMinor       BigInt       @default(0)
+  totalMinor     BigInt       @default(0)
+  sortOrder      Int          @default(0)
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  service   Service?  @relation(fields: [serviceId], references: [id])
+  tax       TaxRate?  @relation(fields: [taxRateId], references: [id])
+
+  @@index([quotationId])
+  @@map("quotation_items")
+}
+
+model QuotationInstallment {
+  id            String    @id @default(cuid())
+  quotationId   String
+  label         String
+  percentage    Decimal   @default(0) @db.Decimal(9, 4)
+  amountMinor   BigInt    @default(0)
+  dueOffsetDays Int       @default(0)
+  dueDate       DateTime? @db.Timestamptz(3)
+  sortOrder     Int       @default(0)
+  quotation     Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@index([quotationId])
+  @@map("quotation_installments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Contracts
+// ─────────────────────────────────────────────────────────────
+
+model Contract {
+  id            String         @id @default(cuid())
+  number        String         @unique
+  title         String
+  clientId      String
+  quotationId   String?
+  startDate     DateTime       @db.Timestamptz(3)
+  endDate       DateTime       @db.Timestamptz(3)
+  renewalDate   DateTime?      @db.Timestamptz(3)
+  autoRenew     Boolean        @default(false)
+  valueMinor    BigInt         @default(0)
+  currency      String         @default("EGP")
+  paymentTerms  String?
+  ownerId       String
+  status        ContractStatus @default(DRAFT)
+  reminderDays  Int[]          @default([30, 14, 7, 1])
+  signedFileId  String?
+  notes         String?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+  deletedAt     DateTime?      @db.Timestamptz(3)
+
+  client    Client            @relation(fields: [clientId], references: [id])
+  quotation Quotation?        @relation(fields: [quotationId], references: [id])
+  owner     User              @relation("ContractOwner", fields: [ownerId], references: [id])
+  services  ContractService[]
+  projects  Project[]
+  invoices  Invoice[]
+
+  @@index([clientId, status])
+  @@index([renewalDate])
+  @@index([deletedAt])
+  @@map("contracts")
+}
+
+model ContractService {
+  id         String   @id @default(cuid())
+  contractId String
+  serviceId  String
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  service    Service  @relation(fields: [serviceId], references: [id])
+
+  @@unique([contractId, serviceId])
+  @@map("contract_services")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Projects, Templates, Tasks
+// ─────────────────────────────────────────────────────────────
+
+model ProjectTemplate {
+  id          String         @id @default(cuid())
+  key         String         @unique
+  nameAr      String
+  nameEn      String
+  description String?
+  serviceId   String?
+  isActive    Boolean        @default(true)
+  service     Service?       @relation(fields: [serviceId], references: [id])
+  tasks       TemplateTask[]
+  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@map("project_templates")
+}
+
+model TemplateTask {
+  id               String   @id @default(cuid())
+  templateId       String
+  orderIndex       Int
+  parentIndex      Int?
+  titleAr          String
+  titleEn          String
+  description      String?
+  departmentKey    String?
+  assigneeRoleKey  String?
+  offsetStartDays  Int      @default(0)
+  offsetDueDays    Int      @default(1)
+  estimateMinutes  Int?
+  priority         Priority @default(MEDIUM)
+  requiresApproval Boolean  @default(false)
+  dependsOnIndex   Int?
+  checklist        Json     @default("[]")
+  recurrenceRule   String?
+
+  template ProjectTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("template_tasks")
+}
+
+model Project {
+  id               String        @id @default(cuid())
+  code             String        @unique
+  name             String
+  clientId         String
+  dealId           String?
+  quotationId      String?
+  contractId       String?
+  templateId       String?
+  ownerId          String
+  accountManagerId String?
+  startDate        DateTime      @db.Timestamptz(3)
+  endDate          DateTime?     @db.Timestamptz(3)
+  status           ProjectStatus @default(ONBOARDING)
+  priority         Priority      @default(MEDIUM)
+  budgetMinor      BigInt        @default(0)
+  currency         String        @default("EGP")
+  progressMode     ProgressMode  @default(TASKS)
+  progressPercent  Int           @default(0)
+  riskNote         String?
+  internalNotes    String?
+  clientNotes      String?
+  completedAt      DateTime?     @db.Timestamptz(3)
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime?     @db.Timestamptz(3)
+
+  client         Client           @relation(fields: [clientId], references: [id])
+  deal           Deal?            @relation(fields: [dealId], references: [id])
+  quotation      Quotation?       @relation(fields: [quotationId], references: [id])
+  contract       Contract?        @relation(fields: [contractId], references: [id])
+  owner          User             @relation("ProjectOwner", fields: [ownerId], references: [id])
+  accountManager User?            @relation("ProjectAccountManager", fields: [accountManagerId], references: [id])
+  members        ProjectMember[]
+  services       ProjectService[]
+  milestones     Milestone[]
+  deliverables   Deliverable[]
+  tasks          Task[]
+  expenses       Expense[]
+  invoices       Invoice[]
+
+  @@index([clientId, status])
+  @@index([ownerId])
+  @@index([status, endDate])
+  @@index([deletedAt])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String  @id @default(cuid())
+  projectId String
+  userId    String
+  roleLabel String?
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model ProjectService {
+  id        String  @id @default(cuid())
+  projectId String
+  serviceId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  @@unique([projectId, serviceId])
+  @@map("project_services")
+}
+
+model Milestone {
+  id        String    @id @default(cuid())
+  projectId String
+  name      String
+  dueDate   DateTime? @db.Timestamptz(3)
+  isDone    Boolean   @default(false)
+  doneAt    DateTime? @db.Timestamptz(3)
+  sortOrder Int       @default(0)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("milestones")
+}
+
+model Deliverable {
+  id                String            @id @default(cuid())
+  projectId         String
+  name              String
+  description       String?
+  dueDate           DateTime?         @db.Timestamptz(3)
+  status            DeliverableStatus @default(PLANNED)
+  approvedVersionId String?
+  approvedById      String?
+  approvedAt        DateTime?         @db.Timestamptz(3)
+  revisionCount     Int               @default(0)
+  clientWaitMinutes Int               @default(0)
+  waitingSince      DateTime?         @db.Timestamptz(3)
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@index([projectId, status])
+  @@map("deliverables")
+}
+
+model Task {
+  id              String      @id @default(cuid())
+  title           String
+  description     String?
+  clientId        String?
+  projectId       String?
+  deliverableId   String?
+  departmentId    String?
+  parentTaskId    String?
+  creatorId       String
+  reviewerId      String?
+  priority        Priority    @default(MEDIUM)
+  status          TaskStatus  @default(TODO)
+  startDate       DateTime?   @db.Timestamptz(3)
+  dueDate         DateTime?   @db.Timestamptz(3)
+  estimateMinutes Int?
+  actualMinutes   Int         @default(0)
+  completedAt     DateTime?   @db.Timestamptz(3)
+  delayReason     DelayReason @default(NONE)
+  blockedNote     String?
+  waitingSince    DateTime?   @db.Timestamptz(3)
+  clientWaitMinutes Int       @default(0)
+  reviewMinutes   Int         @default(0)
+  requiresApproval Boolean    @default(false)
+  recurrenceRule  String?
+  recurrenceParentId String?
+  nextRecurrenceAt DateTime?  @db.Timestamptz(3)
+  sortOrder       Int         @default(0)
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
+  deletedAt       DateTime?   @db.Timestamptz(3)
+
+  client       Client?          @relation(fields: [clientId], references: [id])
+  project      Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliverable  Deliverable?     @relation(fields: [deliverableId], references: [id])
+  department   Department?      @relation(fields: [departmentId], references: [id])
+  parentTask   Task?            @relation("Subtasks", fields: [parentTaskId], references: [id])
+  subtasks     Task[]           @relation("Subtasks")
+  creator      User             @relation("TaskCreator", fields: [creatorId], references: [id])
+  reviewer     User?            @relation("TaskReviewer", fields: [reviewerId], references: [id])
+  assignees    TaskAssignee[]
+  checklist    ChecklistItem[]
+  dependencies TaskDependency[] @relation("DependentTask")
+  dependents   TaskDependency[] @relation("BlockingTask")
+  timeEntries  TimeEntry[]
+
+  @@index([status, dueDate])
+  @@index([projectId, status])
+  @@index([clientId])
+  @@index([deletedAt])
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  id     String @id @default(cuid())
+  taskId String
+  userId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId])
+  @@map("task_assignees")
+}
+
+model ChecklistItem {
+  id         String    @id @default(cuid())
+  taskId     String
+  title      String
+  isRequired Boolean   @default(false)
+  isDone     Boolean   @default(false)
+  doneById   String?
+  doneAt     DateTime? @db.Timestamptz(3)
+  sortOrder  Int       @default(0)
+  task       Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@map("checklist_items")
+}
+
+model TaskDependency {
+  id             String @id @default(cuid())
+  taskId         String
+  dependsOnTaskId String
+  task           Task   @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn      Task   @relation("BlockingTask", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@map("task_dependencies")
+}
+
+model TimeEntry {
+  id      String   @id @default(cuid())
+  taskId  String
+  userId  String
+  minutes Int
+  spentOn DateTime @db.Timestamptz(3)
+  note    String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  task    Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+  @@index([userId, spentOn])
+  @@map("time_entries")
+}
+
+model Comment {
+  id         String     @id @default(cuid())
+  entityType EntityType
+  entityId   String
+  authorId   String
+  body       String
+  editedAt   DateTime?  @db.Timestamptz(3)
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  deletedAt  DateTime?  @db.Timestamptz(3)
+
+  author   User             @relation(fields: [authorId], references: [id])
+  mentions CommentMention[]
+
+  @@index([entityType, entityId, createdAt])
+  @@map("comments")
+}
+
+model CommentMention {
+  id        String  @id @default(cuid())
+  commentId String
+  userId    String
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@index([userId])
+  @@map("comment_mentions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Reviews / Revisions / Approvals
+// ─────────────────────────────────────────────────────────────
+
+model RevisionRequest {
+  id            String         @id @default(cuid())
+  entityType    EntityType
+  entityId      String
+  source        RevisionSource
+  description   String
+  requestedById String
+  assignedToId  String?
+  dueDate       DateTime?      @db.Timestamptz(3)
+  status        RevisionStatus @default(OPEN)
+  versionFileId String?
+  completedAt   DateTime?      @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+
+  requestedBy User  @relation("RevisionRequester", fields: [requestedById], references: [id])
+  assignedTo  User? @relation("RevisionAssignee", fields: [assignedToId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([assignedToId, status])
+  @@map("revision_requests")
+}
+
+model Approval {
+  id         String         @id @default(cuid())
+  entityType EntityType
+  entityId   String
+  step       String // INTERNAL | CLIENT | FINAL
+  approverId String
+  status     ApprovalStatus @default(PENDING)
+  comment    String?
+  decidedAt  DateTime?      @db.Timestamptz(3)
+  createdAt  DateTime       @default(now()) @db.Timestamptz(3)
+
+  approver User @relation(fields: [approverId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([approverId, status])
+  @@map("approvals")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Files
+// ─────────────────────────────────────────────────────────────
+
+model FileObject {
+  id             String     @id @default(cuid())
+  storageKey     String     @unique
+  originalName   String
+  mimeType       String
+  sizeBytes      Int
+  checksum       String?
+  entityType     EntityType
+  entityId       String
+  version        Int        @default(1)
+  label          String?
+  uploadedById   String
+  retentionUntil DateTime?  @db.Timestamptz(3)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  deletedAt      DateTime?  @db.Timestamptz(3)
+
+  uploadedBy User           @relation(fields: [uploadedById], references: [id])
+  downloads  FileDownload[]
+
+  @@index([entityType, entityId, version])
+  @@index([deletedAt])
+  @@map("file_objects")
+}
+
+model FileDownload {
+  id        String     @id @default(cuid())
+  fileId    String
+  userId    String
+  ip        String?
+  createdAt DateTime   @default(now()) @db.Timestamptz(3)
+  file      FileObject @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@index([fileId])
+  @@map("file_downloads")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Finance
+// ─────────────────────────────────────────────────────────────
+
+model Invoice {
+  id            String        @id @default(cuid())
+  number        String        @unique
+  clientId      String
+  contractId    String?
+  projectId     String?
+  quotationId   String?
+  issueDate     DateTime      @db.Timestamptz(3)
+  dueDate       DateTime      @db.Timestamptz(3)
+  currency      String        @default("EGP")
+  subtotalMinor BigInt        @default(0)
+  discountMinor BigInt        @default(0)
+  taxMinor      BigInt        @default(0)
+  totalMinor    BigInt        @default(0)
+  paidMinor     BigInt        @default(0)
+  status        InvoiceStatus @default(DRAFT)
+  paymentMethod PaymentMethod?
+  notes         String?
+  sentAt        DateTime?     @db.Timestamptz(3)
+  cancelReason  String?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+  deletedAt     DateTime?     @db.Timestamptz(3)
+
+  client    Client        @relation(fields: [clientId], references: [id])
+  contract  Contract?     @relation(fields: [contractId], references: [id])
+  project   Project?      @relation(fields: [projectId], references: [id])
+  quotation Quotation?    @relation(fields: [quotationId], references: [id])
+  items     InvoiceItem[]
+  payments  Payment[]
+
+  @@index([clientId, status])
+  @@index([dueDate, status])
+  @@index([deletedAt])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id             String       @id @default(cuid())
+  invoiceId      String
+  nameAr         String
+  nameEn         String
+  description    String?
+  quantity       Decimal      @default(1) @db.Decimal(14, 4)
+  unitPriceMinor BigInt       @default(0)
+  discountType   DiscountType @default(NONE)
+  discountValue  Decimal      @default(0) @db.Decimal(14, 4)
+  taxRateId      String?
+  taxRate        Decimal      @default(0) @db.Decimal(9, 4)
+  subtotalMinor  BigInt       @default(0)
+  discountMinor  BigInt       @default(0)
+  taxMinor       BigInt       @default(0)
+  totalMinor     BigInt       @default(0)
+  sortOrder      Int          @default(0)
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  tax     TaxRate? @relation(fields: [taxRateId], references: [id])
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  invoiceId    String?
+  clientId     String
+  amountMinor  BigInt
+  currency     String        @default("EGP")
+  paidAt       DateTime      @db.Timestamptz(3)
+  method       PaymentMethod @default(BANK_TRANSFER)
+  reference    String?
+  proofFileId  String?
+  recordedById String
+  notes        String?
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  deletedAt    DateTime?     @db.Timestamptz(3)
+
+  invoice    Invoice? @relation(fields: [invoiceId], references: [id])
+  client     Client   @relation(fields: [clientId], references: [id])
+  recordedBy User     @relation(fields: [recordedById], references: [id])
+
+  @@index([invoiceId])
+  @@index([clientId, paidAt])
+  @@map("payments")
+}
+
+model Expense {
+  id           String          @id @default(cuid())
+  projectId    String?
+  clientId     String?
+  category     ExpenseCategory @default(OTHER)
+  description  String
+  vendor       String?
+  amountMinor  BigInt
+  currency     String          @default("EGP")
+  spentOn      DateTime        @db.Timestamptz(3)
+  attachmentId String?
+  recordedById String
+  notes        String?
+  createdAt    DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @db.Timestamptz(3)
+  deletedAt    DateTime?       @db.Timestamptz(3)
+
+  project    Project? @relation(fields: [projectId], references: [id])
+  client     Client?  @relation(fields: [clientId], references: [id])
+  recordedBy User     @relation(fields: [recordedById], references: [id])
+
+  @@index([projectId])
+  @@index([spentOn])
+  @@map("expenses")
+}
+
+model CampaignPerformance {
+  id             String   @id @default(cuid())
+  platform       String
+  campaignName   String
+  periodStart    DateTime @db.Timestamptz(3)
+  periodEnd      DateTime @db.Timestamptz(3)
+  adSpendMinor   BigInt   @default(0)
+  currency       String   @default("EGP")
+  leadsCount     Int      @default(0)
+  qualifiedCount Int      @default(0)
+  bookingsCount  Int      @default(0)
+  salesCount     Int      @default(0)
+  revenueMinor   BigInt   @default(0)
+  clientId       String?
+  notes          String?
+  recordedById   String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([platform, periodStart])
+  @@map("campaign_performance")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Notifications
+// ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String
+  type       NotificationType
+  title      String
+  body       String?
+  entityType EntityType?
+  entityId   String?
+  link       String?
+  dedupeKey  String           @unique
+  readAt     DateTime?        @db.Timestamptz(3)
+  createdAt  DateTime         @default(now()) @db.Timestamptz(3)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  inApp     Boolean          @default(true)
+  email     Boolean          @default(false)
+  digest    DigestFrequency  @default(NONE)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
+}
+
+model JobRun {
+  id        String    @id @default(cuid())
+  key       String
+  status    JobStatus
+  message   String?
+  itemCount Int       @default(0)
+  startedAt DateTime  @db.Timestamptz(3)
+  endedAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([key, endedAt])
+  @@map("job_runs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Governance
+// ─────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String     @id @default(cuid())
+  userId     String?
+  action     String // CREATE | UPDATE | DELETE | RESTORE | LOGIN | EXPORT | APPROVE | ASSIGN | STATUS_CHANGE | PERMISSION_CHANGE
+  module     String
+  entityType EntityType
+  entityId   String
+  summary    String?
+  oldValue   Json?
+  newValue   Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  user       User?      @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId, createdAt])
+  @@index([userId, createdAt])
+  @@index([module, createdAt])
+  @@map("audit_logs")
+}
+
+model SavedView {
+  id       String   @id @default(cuid())
+  userId   String
+  module   String
+  name     String
+  filters  Json     @default("{}")
+  columns  Json     @default("[]")
+  isShared Boolean  @default(false)
+  isDefault Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, module, name])
+  @@map("saved_views")
+}
+
+model Favorite {
+  id         String     @id @default(cuid())
+  userId     String
+  entityType EntityType
+  entityId   String
+  label      String
+  createdAt  DateTime   @default(now()) @db.Timestamptz(3)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entityType, entityId])
+  @@map("favorites")
+}
+
+model RecentItem {
+  id         String     @id @default(cuid())
+  userId     String
+  entityType EntityType
+  entityId   String
+  label      String
+  visitedAt  DateTime   @default(now()) @db.Timestamptz(3)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entityType, entityId])
+  @@index([userId, visitedAt])
+  @@map("recent_items")
+}
