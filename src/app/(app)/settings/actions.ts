@@ -10,6 +10,14 @@ import {
   type SystemSettings,
 } from '@/server/services/settings';
 import { audit } from '@/server/services/audit';
+import { formatDate } from '@/lib/format';
+import {
+  isMailEnabled,
+  verifyMailConnection,
+  sendMail,
+  renderEmail,
+  appUrl,
+} from '@/server/services/mailer';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -226,5 +234,60 @@ export async function saveDepartmentAction(raw: unknown): Promise<Result> {
     });
     revalidatePath('/settings');
     return undefined;
+  });
+}
+
+/* ── البريد الإلكتروني ───────────────────────────────── */
+
+export async function verifyMailAction(): Promise<Result<{ detail: string }>> {
+  return guard(async () => {
+    const user = await requirePermission('settings', 'manage');
+    const result = await verifyMailConnection();
+    await audit({
+      userId: user.id,
+      action: 'UPDATE',
+      module: 'settings',
+      entityType: 'SETTING',
+      entityId: 'smtp',
+      summary: `اختبار الاتصال بخادم البريد: ${result.status}`,
+    });
+    if (result.status === 'sent') return { detail: 'تم الاتصال بخادم البريد بنجاح' };
+    if (result.status === 'skipped') return { detail: result.reason };
+    throw new AppError(`فشل الاتصال: ${result.error}`, 400, 'SMTP_ERROR');
+  });
+}
+
+export async function sendTestEmailAction(): Promise<Result<{ detail: string }>> {
+  return guard(async () => {
+    const user = await requirePermission('settings', 'manage');
+    if (!isMailEnabled()) throw new AppError('SMTP غير مضبوط', 400, 'SMTP_DISABLED');
+    const settings = await getSettings();
+
+    const result = await sendMail({
+      to: user.email,
+      subject: 'رسالة اختبار — Blue Point OS',
+      html: await renderEmail({
+        heading: 'اختبار إعدادات البريد',
+        intro: 'وصول هذه الرسالة يعني أن إعدادات SMTP تعمل بشكل صحيح.',
+        blocks: [
+          { title: 'أُرسلت بواسطة', value: user.name },
+          { title: 'التاريخ', value: formatDate(new Date(), 'ar', settings.locale.timezone, true) },
+        ],
+        action: { label: 'فتح النظام', url: appUrl('/dashboard') },
+      }),
+    });
+
+    await audit({
+      userId: user.id,
+      action: 'UPDATE',
+      module: 'settings',
+      entityType: 'SETTING',
+      entityId: 'smtp',
+      summary: `إرسال رسالة اختبار: ${result.status}`,
+    });
+
+    if (result.status === 'sent') return { detail: `تم الإرسال إلى ${user.email}` };
+    if (result.status === 'skipped') throw new AppError(result.reason, 400, 'SMTP_DISABLED');
+    throw new AppError(`فشل الإرسال: ${result.error}`, 400, 'SMTP_ERROR');
   });
 }

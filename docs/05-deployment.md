@@ -91,7 +91,20 @@ BACKUP_PASSPHRASE=$(openssl rand -base64 32)
 SEED_ADMIN_EMAIL=admin@bluepoint.example
 SEED_ADMIN_PASSWORD=<كلمة مرور قوية — ستُطلب للتغيير عند أول دخول>
 SEED_DEMO_DATA=false        # ⚠ إلزامي في الإنتاج
+
+# البريد — اتركه فارغًا لتشغيل النظام بدون بريد إطلاقًا
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587               # 465 = TLS ضمني، 587 = STARTTLS إجباري
+SMTP_USER=no-reply@bluepoint.example
+SMTP_PASSWORD=<كلمة مرور حساب الإرسال>
+SMTP_FROM=Blue Point OS <no-reply@bluepoint.example>
 ```
+
+> إعدادات SMTP تُقرأ من البيئة عند الإقلاع فقط، ويحتاجها **التطبيق والـWorker معًا**
+> (الـWorker هو من يرسل الملخصات اليومية والأسبوعية). بعد أي تعديل:
+> `docker compose --env-file .env.production up -d app worker`.
+> اضبط سجلات **SPF وDKIM** لنطاق المُرسِل وإلا صُنّفت الرسائل كبريد مزعج.
+> بعد الإطلاق تحقق من `/settings` ← **البريد الإلكتروني** ← «اختبار الاتصال» ثم «إرسال رسالة تجريبية».
 
 ```bash
 chmod 600 .env.production

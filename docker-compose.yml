@@ -52,6 +52,7 @@ services:
       CHROMIUM_PATH: /usr/bin/chromium
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
@@ -84,6 +85,13 @@ services:
       FILE_SIGNING_SECRET: ${FILE_SIGNING_SECRET}
       STORAGE_DIR: /app/storage
       WORKER_INTERVAL_SECONDS: ${WORKER_INTERVAL_SECONDS:-300}
+      # الـWorker هو من يرسل الملخصات اليومية والأسبوعية — يحتاج نفس إعدادات البريد.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     volumes:
       - storage:/app/storage
     depends_on:

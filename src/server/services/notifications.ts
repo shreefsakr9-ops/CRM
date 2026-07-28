@@ -2,6 +2,8 @@ import 'server-only';
 import type { EntityType, NotificationType } from '@prisma/client';
 import { prisma, type Tx } from '@/server/db';
 import { requireUser } from '@/server/auth/guard';
+import { sendMail, renderEmail, appUrl, isMailEnabled } from './mailer';
+import { NOTIFICATION_TYPE } from '@/i18n/labels';
 
 export interface NotifyInput {
   userId: string;
@@ -22,32 +24,69 @@ const UNMUTABLE: NotificationType[] = ['SECURITY'];
 export async function notify(input: NotifyInput): Promise<boolean> {
   const client = input.tx ?? prisma;
 
-  if (!UNMUTABLE.includes(input.type)) {
-    const pref = await client.notificationPreference.findUnique({
-      where: { userId_type: { userId: input.userId, type: input.type } },
-    });
-    if (pref && !pref.inApp) return false;
+  const pref = UNMUTABLE.includes(input.type)
+    ? null
+    : await client.notificationPreference.findUnique({
+        where: { userId_type: { userId: input.userId, type: input.type } },
+      });
+
+  if (pref && !pref.inApp && !pref.email) return false;
+
+  if (pref?.inApp === false) {
+    // أوقف الإشعار داخل النظام لكن أبقِ البريد إن كان مفعّلًا.
+  } else {
+    try {
+      await client.notification.create({
+        data: {
+          userId: input.userId,
+          type: input.type,
+          title: input.title,
+          body: input.body,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          link: input.link,
+          dedupeKey: input.dedupeKey,
+        },
+      });
+    } catch (e) {
+      // خرق قيد التفرد يعني أن الإشعار موجود بالفعل — هذا سلوك مقصود،
+      // ولا نرسل بريدًا مكررًا في هذه الحالة.
+      if ((e as { code?: string }).code === 'P2002') return false;
+      throw e;
+    }
   }
 
-  try {
-    await client.notification.create({
-      data: {
-        userId: input.userId,
-        type: input.type,
-        title: input.title,
-        body: input.body,
-        entityType: input.entityType,
-        entityId: input.entityId,
-        link: input.link,
-        dedupeKey: input.dedupeKey,
-      },
+  // البريد الفوري يُرسل فقط لمن فعّله صراحةً ولم يختر ملخصًا دوريًا بدلًا منه.
+  const wantsImmediateEmail =
+    UNMUTABLE.includes(input.type) || (pref?.email === true && pref.digest === 'NONE');
+
+  if (wantsImmediateEmail && isMailEnabled()) {
+    // الإرسال خارج المسار الحرج: فشل البريد لا يُبطل الإشعار داخل النظام.
+    await sendNotificationEmail(input.userId, input).catch((e) => {
+      console.error('[notifications] فشل إرسال بريد الإشعار:', e instanceof Error ? e.message : e);
     });
-    return true;
-  } catch (e) {
-    // خرق قيد التفرد يعني أن الإشعار موجود بالفعل — هذا سلوك مقصود.
-    if ((e as { code?: string }).code === 'P2002') return false;
-    throw e;
   }
+
+  return true;
+}
+
+async function sendNotificationEmail(userId: string, input: NotifyInput) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, name: true, isActive: true, deletedAt: true },
+  });
+  if (!user || !user.isActive || user.deletedAt) return;
+
+  await sendMail({
+    to: user.email,
+    subject: input.title,
+    html: await renderEmail({
+      heading: input.title,
+      intro: input.body ?? undefined,
+      blocks: [{ title: 'نوع التنبيه', value: NOTIFICATION_TYPE[input.type]?.ar ?? input.type }],
+      action: input.link ? { label: 'فتح في النظام', url: appUrl(input.link) } : undefined,
+    }),
+  });
 }
 
 export async function notifyMany(inputs: NotifyInput[]) {

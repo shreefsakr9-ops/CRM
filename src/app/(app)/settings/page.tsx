@@ -4,6 +4,7 @@ import { ShieldCheck } from 'lucide-react';
 import { requirePermission, can } from '@/server/auth/guard';
 import { getSettings } from '@/server/services/settings';
 import { peekSequences } from '@/server/services/numbering';
+import { mailStatus } from '@/server/services/mailer';
 import { prisma } from '@/server/db';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/primitives';
@@ -59,6 +60,7 @@ export default async function SettingsPage() {
             countries,
           }) as never
         }
+        mail={mailStatus()}
         canEdit={can(user, 'settings', 'edit')}
         canManage={can(user, 'settings', 'manage')}
       />

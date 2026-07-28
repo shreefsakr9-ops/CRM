@@ -2,8 +2,20 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, Plus, Pencil } from 'lucide-react';
-import { Badge, Button, Card, CardBody, CardHeader, Checkbox, Field, Input, Select, Textarea } from '@/components/ui/primitives';
+import { Save, Plus, Pencil, MailCheck, PlugZap, Send } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Checkbox,
+  Field,
+  Input,
+  KeyValue,
+  Select,
+  Textarea,
+} from '@/components/ui/primitives';
 import { Drawer } from '@/components/ui/drawer';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
@@ -14,6 +26,8 @@ import {
   saveLossReasonAction,
   saveTaxRateAction,
   saveDepartmentAction,
+  verifyMailAction,
+  sendTestEmailAction,
 } from './actions';
 
 interface Settings {
@@ -64,21 +78,33 @@ interface Reference {
   countries: { code: string; nameAr: string }[];
 }
 
+interface MailStatus {
+  enabled: boolean;
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  authenticated?: boolean;
+  from?: string;
+}
+
 const TABS = [
   ['company', 'بيانات الشركة'],
   ['workflow', 'قواعد العمل'],
   ['reference', 'البيانات المرجعية'],
   ['numbering', 'الترقيم والملفات'],
+  ['mail', 'البريد الإلكتروني'],
 ] as const;
 
 export function SettingsClient({
   settings,
   reference,
+  mail,
   canEdit,
   canManage,
 }: {
   settings: Settings;
   reference: Reference;
+  mail: MailStatus;
   canEdit: boolean;
   canManage: boolean;
 }) {
@@ -551,6 +577,8 @@ export function SettingsClient({
         </div>
       )}
 
+      {tab === 'mail' && <MailPanel mail={mail} canManage={canManage} />}
+
       <ReferenceDrawer
         editing={editing}
         countries={reference.countries}
@@ -606,6 +634,135 @@ function SectionForm({
         </div>
       )}
     </form>
+  );
+}
+
+/**
+ * إعدادات SMTP تُقرأ من متغيرات البيئة فقط ولا تُحفظ في قاعدة البيانات،
+ * لذلك هذه الشاشة للعرض والاختبار — لا للتعديل. تغيير الخادم يتم من ملف .env
+ * ثم إعادة تشغيل التطبيق والـWorker.
+ */
+function MailPanel({ mail, canManage }: { mail: MailStatus; canManage: boolean }) {
+  const toast = useToast();
+  const [busy, setBusy] = React.useState<'verify' | 'test' | null>(null);
+
+  const run = async (kind: 'verify' | 'test') => {
+    setBusy(kind);
+    const res = await (kind === 'verify' ? verifyMailAction() : sendTestEmailAction());
+    setBusy(null);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(res.data?.detail ?? 'تم');
+  };
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Card>
+        <CardHeader
+          title="خادم البريد (SMTP)"
+          subtitle="يُقرأ من متغيرات البيئة — لا تُخزَّن أي بيانات اعتماد داخل النظام"
+          action={
+            mail.enabled ? (
+              <Badge tone="ok" dot>
+                مضبوط
+              </Badge>
+            ) : (
+              <Badge tone="warn" dot>
+                غير مضبوط
+              </Badge>
+            )
+          }
+        />
+        <CardBody>
+          {mail.enabled ? (
+            <>
+              <dl className="grid gap-x-4 sm:grid-cols-2">
+                <KeyValue label="الخادم">
+                  <span dir="ltr" className="num">
+                    {mail.host}:{mail.port}
+                  </span>
+                </KeyValue>
+                <KeyValue label="التشفير">
+                  {mail.secure ? 'TLS ضمني (المنفذ 465)' : 'STARTTLS مطلوب'}
+                </KeyValue>
+                <KeyValue label="المصادقة">
+                  {mail.authenticated ? 'باسم مستخدم وكلمة مرور' : 'بدون مصادقة'}
+                </KeyValue>
+                <KeyValue label="المُرسِل">
+                  <span dir="ltr">{mail.from}</span>
+                </KeyValue>
+              </dl>
+              {canManage && (
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    type="button"
+                    loading={busy === 'verify'}
+                    disabled={busy !== null}
+                    onClick={() => void run('verify')}
+                  >
+                    <PlugZap className="h-3.5 w-3.5" />
+                    اختبار الاتصال
+                  </Button>
+                  <Button
+                    size="sm"
+                    type="button"
+                    loading={busy === 'test'}
+                    disabled={busy !== null}
+                    onClick={() => void run('test')}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    إرسال رسالة تجريبية لي
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-3 text-sm leading-7 text-ink-muted">
+              <p>
+                النظام يعمل بالكامل بدون بريد: الإشعارات داخل النظام والمهام والتنبيهات كلها تعمل
+                كالمعتاد. ما يتوقف فقط هو الإرسال الخارجي:
+              </p>
+              <ul className="list-inside list-disc space-y-1 text-[13px]">
+                <li>رسالة إعادة تعيين كلمة المرور (يظل بإمكان مدير النظام إعادة التعيين يدويًا)</li>
+                <li>البريد الفوري لمن فعّله في تفضيلات الإشعارات</li>
+                <li>الملخص اليومي والأسبوعي</li>
+              </ul>
+              <p className="text-[13px]">
+                للتفعيل: اضبط <code className="num text-ink">SMTP_HOST</code> وبقية متغيرات{' '}
+                <code className="num text-ink">SMTP_*</code> في ملف <code className="num text-ink">.env</code>{' '}
+                ثم أعد تشغيل التطبيق والـWorker.
+              </p>
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="الرسائل التي يرسلها النظام" subtitle="لا توجد رسائل تسويقية — داخلية فقط" />
+        <CardBody className="p-0">
+          <ul className="divide-y divide-line">
+            {[
+              ['إعادة تعيين كلمة المرور', 'رابط صالح لمدة ساعة ويُستخدم مرة واحدة', 'فوري'],
+              ['إشعار فوري', 'لمن فعّل البريد في تفضيلات الإشعارات بدون ملخص دوري', 'فوري'],
+              ['الملخص اليومي', 'تجميع إشعارات اليوم لمن اختار "يومي"', '٠٨:٠٠ بتوقيت القاهرة'],
+              ['الملخص الأسبوعي', 'تجميع إشعارات الأسبوع لمن اختار "أسبوعي"', 'الأحد ٠٨:٠٠'],
+            ].map(([title, desc, when]) => (
+              <li key={title} className="flex items-start justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-sm text-ink">
+                    <MailCheck className="h-3.5 w-3.5 text-ink-faint" />
+                    {title}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-ink-faint">{desc}</p>
+                </div>
+                <Badge tone="muted">{when}</Badge>
+              </li>
+            ))}
+          </ul>
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 

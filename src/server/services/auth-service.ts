@@ -9,6 +9,7 @@ import {
 } from '@/server/auth/password';
 import { createSession, revokeAllSessions, getRequestMeta } from '@/server/auth/session';
 import { audit } from './audit';
+import { sendMail, renderEmail, appUrl } from './mailer';
 import { AppError, BadRequest } from '@/server/auth/guard';
 
 const MAX_ATTEMPTS_PER_EMAIL = 6;
@@ -121,15 +122,30 @@ export async function requestPasswordReset(emailRaw: string): Promise<{ token?: 
       expiresAt: new Date(Date.now() + 60 * 60_000), // ساعة واحدة
     },
   });
+
+  const resetUrl = appUrl(`/reset-password?token=${encodeURIComponent(token)}`);
+  const result = await sendMail({
+    to: user.email,
+    subject: 'إعادة تعيين كلمة المرور — Blue Point OS',
+    html: await renderEmail({
+      heading: 'طلب إعادة تعيين كلمة المرور',
+      intro: `مرحبًا ${user.name}، وصلنا طلب لإعادة تعيين كلمة مرور حسابك. اضغط الزر أدناه لاختيار كلمة مرور جديدة.`,
+      action: { label: 'تعيين كلمة مرور جديدة', url: resetUrl },
+      footnote:
+        'هذا الرابط صالح لمدة ساعة واحدة فقط ويُستخدم مرة واحدة. إذا لم تطلب أنت إعادة التعيين فتجاهل هذه الرسالة — لن يتغير شيء في حسابك، ويُفضَّل إبلاغ مدير النظام.',
+    }),
+  });
+
   await audit({
     userId: user.id,
     action: 'PASSWORD_RESET',
     module: 'users',
     entityType: 'USER',
     entityId: user.id,
-    summary: 'طلب إعادة تعيين كلمة المرور',
+    summary: `طلب إعادة تعيين كلمة المرور (البريد: ${result.status})`,
   });
-  // في بيئة بدون SMTP يُعاد الرمز للمسؤول عبر السجل فقط، ولا يُعرض للمستخدم.
+
+  // الرمز يُعاد للمستدعي فقط في بيئة التطوير عند غياب SMTP، ولا يُعرض للمستخدم أبدًا.
   return { token };
 }
 

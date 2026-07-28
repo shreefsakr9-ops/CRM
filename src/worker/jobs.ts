@@ -1,5 +1,7 @@
 import { prisma } from '@/server/db';
 import { notify } from '@/server/services/notifications';
+import { sendMail, renderEmail, appUrl, isMailEnabled } from '@/server/services/mailer';
+import { NOTIFICATION_TYPE } from '@/i18n/labels';
 import { getSettings } from '@/server/services/settings';
 import { refreshOverdueInvoices } from '@/server/services/invoices';
 import { evaluateProjectRisk } from '@/server/services/projects';
@@ -13,6 +15,11 @@ export interface JobResult {
   key: string;
   count: number;
   message?: string;
+  /**
+   * تشغيلة لم تُنفَّذ فعليًا (خارج موعدها أو معطّلة).
+   * تُسجَّل بحالة SKIPPED حتى لا تُحسب كتشغيلة ناجحة في منع التكرار.
+   */
+  skipped?: boolean;
 }
 
 const day = 86_400_000;
@@ -399,6 +406,104 @@ export async function jobRecurringTasks(): Promise<JobResult> {
   return { key: 'recurring_tasks', count };
 }
 
+
+/**
+ * الملخصات الدورية (يومي/أسبوعي).
+ * تُرسل رسالة واحدة تجمع الإشعارات غير المقروءة لمن اختار ملخصًا بدل البريد الفوري.
+ * منع التكرار يعتمد على سجل JobRun: لا تُرسل دفعة ثانية في نفس اليوم/الأسبوع.
+ */
+async function runDigest(frequency: 'DAILY' | 'WEEKLY'): Promise<JobResult> {
+  const key = frequency === 'DAILY' ? 'digest_daily' : 'digest_weekly';
+  if (!isMailEnabled()) return { key, count: 0, message: 'SMTP غير مضبوط — تم التخطي', skipped: true };
+
+  const now = new Date();
+  const windowMs = frequency === 'DAILY' ? day : 7 * day;
+
+  // لا نرسل مرتين خلال نفس النافذة الزمنية.
+  // التشغيلات المتخطّاة تُسجَّل بحالة SKIPPED، لذلك لا تمنع الإرسال الحقيقي.
+  const lastRun = await prisma.jobRun.findFirst({
+    where: { key, status: 'SUCCESS', endedAt: { gte: new Date(now.getTime() - windowMs) } },
+    orderBy: { endedAt: 'desc' },
+  });
+  if (lastRun) return { key, count: 0, message: 'أُرسل بالفعل خلال هذه النافذة', skipped: true };
+
+  const prefs = await prisma.notificationPreference.findMany({
+    where: { digest: frequency, email: true },
+    select: { userId: true, type: true },
+  });
+  if (prefs.length === 0) return { key, count: 0 };
+
+  // تجميع الأنواع المطلوبة لكل مستخدم.
+  const typesByUser = new Map<string, Set<string>>();
+  for (const p of prefs) {
+    if (!typesByUser.has(p.userId)) typesByUser.set(p.userId, new Set());
+    typesByUser.get(p.userId)!.add(p.type);
+  }
+
+  let sent = 0;
+  for (const [userId, types] of typesByUser) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true, isActive: true, deletedAt: true },
+    });
+    if (!user || !user.isActive || user.deletedAt) continue;
+
+    const notifications = await prisma.notification.findMany({
+      where: {
+        userId,
+        readAt: null,
+        type: { in: Array.from(types) as never },
+        createdAt: { gte: new Date(now.getTime() - windowMs) },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 40,
+    });
+    // لا نرسل ملخصًا فارغًا.
+    if (notifications.length === 0) continue;
+
+    const blocks = notifications.map((n) => ({
+      title: NOTIFICATION_TYPE[n.type]?.ar ?? n.type,
+      value: n.title,
+      href: n.link ? appUrl(n.link) : undefined,
+    }));
+
+    const result = await sendMail({
+      to: user.email,
+      subject:
+        frequency === 'DAILY'
+          ? `ملخصك اليومي — ${notifications.length} تنبيه غير مقروء`
+          : `ملخصك الأسبوعي — ${notifications.length} تنبيه غير مقروء`,
+      html: await renderEmail({
+        heading: frequency === 'DAILY' ? 'ملخص اليوم' : 'ملخص الأسبوع',
+        intro: `مرحبًا ${user.name}، هذه التنبيهات التي لم تفتحها بعد.`,
+        blocks,
+        action: { label: 'فتح مركز الإشعارات', url: appUrl('/notifications') },
+        footnote:
+          'يمكنك تغيير دورية الملخص أو إيقافه من تبويب الإعدادات في صفحة الإشعارات داخل النظام.',
+      }),
+    });
+    if (result.status === 'sent') sent++;
+  }
+
+  return { key, count: sent };
+}
+
+export async function jobDailyDigest(): Promise<JobResult> {
+  const hour = new Date().getUTCHours();
+  // 06:00 UTC ≈ 08:00 بتوقيت القاهرة.
+  if (hour !== 6) return { key: 'digest_daily', count: 0, message: 'خارج موعد الإرسال', skipped: true };
+  return runDigest('DAILY');
+}
+
+export async function jobWeeklyDigest(): Promise<JobResult> {
+  const now = new Date();
+  // الأحد 06:00 UTC — بداية أسبوع العمل في مصر والخليج.
+  if (now.getUTCDay() !== 0 || now.getUTCHours() !== 6) {
+    return { key: 'digest_weekly', count: 0, message: 'خارج موعد الإرسال', skipped: true };
+  }
+  return runDigest('WEEKLY');
+}
+
 export const ALL_JOBS = [
   jobUncontactedLeads,
   jobFollowUps,
@@ -409,6 +514,8 @@ export const ALL_JOBS = [
   jobProjectRisk,
   jobClientHealth,
   jobRecurringTasks,
+  jobDailyDigest,
+  jobWeeklyDigest,
 ];
 
 export async function runAllJobs() {
@@ -421,7 +528,7 @@ export async function runAllJobs() {
       await prisma.jobRun.create({
         data: {
           key: result.key,
-          status: 'SUCCESS',
+          status: result.skipped ? 'SKIPPED' : 'SUCCESS',
           itemCount: result.count,
           message: result.message,
           startedAt,
