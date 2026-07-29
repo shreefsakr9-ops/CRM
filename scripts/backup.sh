@@ -32,6 +32,14 @@ log "▶ بدء النسخ الاحتياطي"
 pg_dump --format=custom --compress=9 --file="$DB_FILE" || fail "pg_dump"
 log "✓ قاعدة البيانات: $(basename "$DB_FILE") ($(du -h "$DB_FILE" | cut -f1))"
 
+# ── التحقق من سلامة النسخة (قبل التشفير عمدًا) ──
+# لازم قبل التشفير لا بعده: التشفير يحذف ملف pg_dump الأصلي (rm -f أدناه)،
+# وpg_restore --list لا يقرأ أصلًا ملفًا مشفَّرًا بـopenssl. التحقق بعد التشفير
+# كان يتخطّى نفسه بصمت في كل نسخة مشفَّرة، فيتحوّل الفحص «الحقيقي» إلى مجرد
+# فحص أن الملف غير فارغ — وهذا الفحص يفشل على ملف تالف فعلًا لا مجرد فحص حجم.
+pg_restore --list "$DB_FILE" > /dev/null 2>&1 || fail "النسخة تالفة (pg_restore --list)"
+log "✓ تم التحقق من سلامة النسخة"
+
 # ── الملفات والمرفقات ──
 if [ -d "$STORAGE_DIR" ]; then
   tar -czf "$FILES_FILE" -C "$(dirname "$STORAGE_DIR")" "$(basename "$STORAGE_DIR")" \
@@ -56,16 +64,10 @@ if [ -n "${BACKUP_PASSPHRASE:-}" ]; then
   fi
 fi
 
-# ── التحقق من سلامة النسخة ──
+# ── فحص أخير: الملف النهائي (مشفَّرًا كان أو لا) غير فارغ ──
 VERIFY_TARGET="$DB_FILE"
 [ -f "$DB_FILE.enc" ] && VERIFY_TARGET="$DB_FILE.enc"
-[ -s "$VERIFY_TARGET" ] || fail "ملف النسخة فارغ"
-
-if [ -f "$DB_FILE" ]; then
-  # pg_restore --list يفشل على ملف تالف — تحقق حقيقي وليس مجرد فحص حجم.
-  pg_restore --list "$DB_FILE" > /dev/null 2>&1 || fail "النسخة تالفة (pg_restore --list)"
-  log "✓ تم التحقق من سلامة النسخة"
-fi
+[ -s "$VERIFY_TARGET" ] || fail "ملف النسخة فارغ بعد التشفير"
 
 # ── حذف النسخ القديمة ──
 find "$BACKUP_DIR" -name 'db-*' -type f -mtime "+$RETENTION_DAYS" -delete
