@@ -30,7 +30,20 @@ export function mockSession() {
       getRequestMeta: async () => ({ ip: '127.0.0.1', userAgent: 'vitest' }),
       createSession: async () => 'test-token',
       destroyCurrentSession: async () => undefined,
-      revokeAllSessions: async () => undefined,
+      // إبطال الجلسات ينفَّذ فعليًا: المحاكاة هنا للتحكم في هوية المستخدم الحالي
+      // فقط، ولو عطّلناه لمرّت اختبارات أمنية تظنّ أن الجلسات أُبطلت وهي لم تُبطل.
+      revokeAllSessions: async (userId: string) => {
+        const { prisma } = await import('./helpers');
+        await prisma.session.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      },
+      // تحدي المصادقة الثنائية يعتمد على الكوكيز وهي غير متاحة خارج طلب Next.
+      setTwoFactorChallenge: async () => undefined,
+      readTwoFactorChallenge: async () => null,
+      clearTwoFactorChallenge: async () => undefined,
+      TWO_FACTOR_COOKIE: 'bp_2fa',
     };
   });
 }

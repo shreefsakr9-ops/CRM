@@ -41,10 +41,30 @@ export async function listUsers(params: { q?: string; roleId?: string; active?: 
         }
       : {}),
   };
+  // قائمة حقول صريحة لا `include`: الأخير يعيد كل الأعمدة بما فيها `passwordHash`
+  // و`twoFactorSecret`، وهذه النتيجة تُمرَّر إلى مكوّن عميل فتُسلسَل داخل صفحة HTML.
   return prisma.user.findMany({
     where,
     orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
-    include: {
+    select: {
+      id: true,
+      name: true,
+      nameEn: true,
+      email: true,
+      phone: true,
+      jobTitle: true,
+      avatarUrl: true,
+      roleId: true,
+      departmentId: true,
+      managerId: true,
+      locale: true,
+      timezone: true,
+      salesTargetMinor: true,
+      isActive: true,
+      mustResetPassword: true,
+      twoFactorEnabled: true,
+      lastLoginAt: true,
+      createdAt: true,
       role: { select: { key: true, nameAr: true } },
       department: { select: { nameAr: true } },
       manager: { select: { name: true } },

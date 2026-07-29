@@ -9,6 +9,7 @@ import {
   updateRolePermissions,
   userInputSchema,
 } from '@/server/services/users';
+import { resetUserTwoFactor } from '@/server/services/two-factor';
 import { AppError } from '@/server/auth/guard';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -66,6 +67,15 @@ export async function updateRolePermissionsAction(raw: unknown): Promise<Result>
   return guard(async () => {
     await updateRolePermissions(raw);
     revalidatePath('/settings/roles');
+    return undefined;
+  });
+}
+
+/** إعادة تعيين المصادقة الثنائية لمستخدم فقد جهازه ورموز الاسترجاع. */
+export async function resetTwoFactorAction(userId: string): Promise<Result> {
+  return guard(async () => {
+    await resetUserTwoFactor(userId);
+    revalidatePath('/users');
     return undefined;
   });
 }

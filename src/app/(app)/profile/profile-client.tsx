@@ -2,16 +2,26 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Save, KeyRound, LogOut, Monitor } from 'lucide-react';
+import { Save, KeyRound, LogOut, Monitor, ShieldCheck, ShieldOff, Copy, RefreshCw } from 'lucide-react';
 import { Badge, Button, Card, CardBody, CardHeader, Field, Input, Select } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { formatDate, formatRelative } from '@/lib/format';
-import { updateProfileAction, changePasswordAction, revokeSessionAction } from './actions';
+import { cn } from '@/lib/utils';
+import {
+  updateProfileAction,
+  changePasswordAction,
+  revokeSessionAction,
+  beginTwoFactorAction,
+  confirmTwoFactorAction,
+  disableTwoFactorAction,
+  regenerateRecoveryCodesAction,
+} from './actions';
 
 export function ProfileClient({
   me,
   sessions,
   currentSessionId,
+  twoFactor,
 }: {
   me: {
     id: string;
@@ -34,6 +44,7 @@ export function ProfileClient({
     lastSeenAt: string;
   }[];
   currentSessionId: string;
+  twoFactor: { enabled: boolean; remainingRecoveryCodes: number };
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -136,6 +147,8 @@ export function ProfileClient({
           </Card>
         </form>
 
+        <TwoFactorCard status={twoFactor} />
+
         <Card>
           <CardHeader
             title="الجلسات النشطة"
@@ -177,6 +190,243 @@ export function ProfileClient({
             </ul>
           </CardBody>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * المصادقة الثنائية.
+ * السر ورموز الاسترجاع تُعرض مرة واحدة فقط ولا تُخزَّن في المتصفح — إن أغلق
+ * المستخدم الصفحة قبل حفظها فعليه إعادة التوليد. هذا مقصود.
+ */
+function TwoFactorCard({ status }: { status: { enabled: boolean; remainingRecoveryCodes: number } }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, setPending] = React.useState(false);
+  const [setup, setSetup] = React.useState<{ secret: string; otpauth: string; qrSvg: string } | null>(null);
+  const [codes, setCodes] = React.useState<string[] | null>(null);
+
+  const begin = async () => {
+    setPending(true);
+    const res = await beginTwoFactorAction();
+    setPending(false);
+    if (!res.ok) return toast.error(res.error);
+    setSetup(res.data);
+  };
+
+  const confirm = async (code: string) => {
+    setPending(true);
+    const res = await confirmTwoFactorAction(code);
+    setPending(false);
+    if (!res.ok) return toast.error(res.error);
+    setSetup(null);
+    setCodes(res.data);
+    toast.success('تم تفعيل المصادقة الثنائية');
+    router.refresh();
+  };
+
+  const disable = async (password: string) => {
+    setPending(true);
+    const res = await disableTwoFactorAction(password);
+    setPending(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success('تم إيقاف المصادقة الثنائية');
+    router.refresh();
+  };
+
+  const regenerate = async (password: string) => {
+    setPending(true);
+    const res = await regenerateRecoveryCodesAction(password);
+    setPending(false);
+    if (!res.ok) return toast.error(res.error);
+    setCodes(res.data);
+    toast.success('أُعيد توليد رموز الاسترجاع');
+    router.refresh();
+  };
+
+  return (
+    <Card>
+      <CardHeader
+        title="المصادقة الثنائية"
+        subtitle="طبقة حماية ثانية عند الدخول — رمز من تطبيق المصادقة"
+        action={
+          status.enabled ? (
+            <Badge tone="ok" dot>
+              مفعّلة
+            </Badge>
+          ) : (
+            <Badge tone="warn" dot>
+              غير مفعّلة
+            </Badge>
+          )
+        }
+      />
+      <CardBody className="space-y-4">
+        {codes && <RecoveryCodes codes={codes} onDone={() => setCodes(null)} />}
+
+        {!codes && setup && (
+          <div className="space-y-4">
+            <p className="text-xs leading-6 text-ink-muted">
+              امسح الرمز بتطبيق المصادقة (Google Authenticator أو Microsoft Authenticator أو
+              1Password)، ثم أدخل الرمز الظاهر لتأكيد التفعيل.
+            </p>
+            <div className="flex flex-wrap items-start gap-4">
+              <div
+                className="w-40 shrink-0 rounded-md bg-white p-2 [&>svg]:h-full [&>svg]:w-full"
+                // الـSVG مولَّد على السيرفر من قيمة نحن من أنشأها، لا من مدخل مستخدم.
+                dangerouslySetInnerHTML={{ __html: setup.qrSvg }}
+              />
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="bp-label">أو أدخل السر يدويًا</p>
+                <code className="num block break-all rounded border border-line bg-surface-sunken px-2 py-1.5 text-[11px] text-ink" dir="ltr">
+                  {setup.secret}
+                </code>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(setup.secret);
+                    toast.success('نُسخ السر');
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  نسخ
+                </Button>
+              </div>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const fd = new FormData(e.currentTarget);
+                void confirm(String(fd.get('code') ?? ''));
+              }}
+              className="flex flex-wrap items-end gap-2"
+            >
+              <Field label="الرمز من التطبيق" className="flex-1">
+                <Input name="code" dir="ltr" placeholder="123456" required autoFocus />
+              </Field>
+              <Button type="submit" loading={pending}>
+                <ShieldCheck className="h-4 w-4" />
+                تأكيد التفعيل
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setSetup(null)}>
+                إلغاء
+              </Button>
+            </form>
+          </div>
+        )}
+
+        {!codes && !setup && !status.enabled && (
+          <div className="space-y-3">
+            <p className="text-xs leading-6 text-ink-muted">
+              عند التفعيل سيُطلب منك رمز إضافي بعد كلمة المرور في كل تسجيل دخول. تحتاج تطبيق
+              مصادقة على هاتفك.
+            </p>
+            <Button type="button" loading={pending} onClick={() => void begin()}>
+              <ShieldCheck className="h-4 w-4" />
+              تفعيل المصادقة الثنائية
+            </Button>
+          </div>
+        )}
+
+        {!codes && !setup && status.enabled && (
+          <div className="space-y-4">
+            <p className="text-xs leading-6 text-ink-muted">
+              رموز الاسترجاع المتبقية:{' '}
+              <span className={cn('num font-bold', status.remainingRecoveryCodes <= 2 ? 'text-warn' : 'text-ink')}>
+                {status.remainingRecoveryCodes}
+              </span>
+              {status.remainingRecoveryCodes <= 2 && ' — يُفضَّل توليد رموز جديدة'}
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const fd = new FormData(form);
+                const password = String(fd.get('password') ?? '');
+                const intent = (form.elements.namedItem('intent') as HTMLInputElement | null)?.value;
+                if (intent === 'disable') void disable(password);
+                else void regenerate(password);
+                form.reset();
+              }}
+              className="space-y-3"
+            >
+              <Field label="كلمة المرور الحالية" hint="مطلوبة لأي تغيير على إعدادات الحماية" required>
+                <Input name="password" type="password" dir="ltr" required autoComplete="current-password" />
+              </Field>
+              <input type="hidden" name="intent" value="regenerate" />
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="secondary"
+                  loading={pending}
+                  onClick={(e) => {
+                    const form = e.currentTarget.form;
+                    if (form) (form.elements.namedItem('intent') as HTMLInputElement).value = 'regenerate';
+                  }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  رموز استرجاع جديدة
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="danger"
+                  loading={pending}
+                  onClick={(e) => {
+                    const form = e.currentTarget.form;
+                    if (form) (form.elements.namedItem('intent') as HTMLInputElement).value = 'disable';
+                  }}
+                >
+                  <ShieldOff className="h-3.5 w-3.5" />
+                  إيقاف
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
+  const toast = useToast();
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border border-warn/25 bg-warn/10 p-3 text-xs leading-6 text-ink-muted">
+        <p className="font-semibold text-ink">احفظ هذه الرموز الآن</p>
+        <p className="mt-1">
+          كل رمز يُستخدم مرة واحدة عند فقد هاتفك. <strong>لن تظهر مرة أخرى</strong> — النظام يحفظ
+          نسخة مجزّأة فقط ولا يستطيع استعادتها.
+        </p>
+      </div>
+      <ul className="grid grid-cols-2 gap-1.5" dir="ltr">
+        {codes.map((code) => (
+          <li key={code} className="num rounded border border-line bg-surface-sunken px-2 py-1 text-center text-[11px] text-ink">
+            {code}
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(codes.join('\n'));
+            toast.success('نُسخت الرموز');
+          }}
+        >
+          <Copy className="h-3.5 w-3.5" />
+          نسخ الكل
+        </Button>
+        <Button size="sm" type="button" onClick={onDone}>
+          حفظتها
+        </Button>
       </div>
     </div>
   );

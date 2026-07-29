@@ -8,6 +8,7 @@ const { listInvoices, createInvoice } = await import('@/server/services/invoices
 const { getProject, createProject, updateProject } = await import('@/server/services/projects');
 const { getClient, createClient } = await import('@/server/services/clients');
 const { AppError } = await import('@/server/auth/guard');
+const { listUsers } = await import('@/server/services/users');
 
 const SALES1 = 'test.sales1@bluepoint.local';
 const SALES2 = 'test.sales2@bluepoint.local';
@@ -251,5 +252,43 @@ describe('كشف التكرار', () => {
       { allowDuplicate: true },
     );
     expect(lead.id).toBeTruthy();
+  });
+});
+
+describe('تسريب الحقول الحساسة', () => {
+  /**
+   * `include` في Prisma يعيد كل الأعمدة، ونتيجة `listUsers` تُمرَّر إلى مكوّن عميل
+   * فتُسلسَل داخل صفحة HTML. هذا الاختبار يمنع عودة التسريب بصمت.
+   */
+  it('قائمة المستخدمين لا تحمل كلمات المرور ولا أسرار المصادقة الثنائية', async () => {
+    await actAs(ADMIN);
+    const users = await listUsers({});
+    expect(users.length).toBeGreaterThan(0);
+
+    // salesTargetMinor من نوع BigInt، لذلك نحوّله أثناء التسلسل.
+    const serialized = JSON.stringify(users, (_key, value) =>
+      typeof value === 'bigint' ? value.toString() : value,
+    );
+    for (const field of [
+      'passwordHash',
+      'scrypt$',
+      'twoFactorSecret',
+      'twoFactorLastStep',
+      'failedLoginCount',
+      'lockedUntil',
+    ]) {
+      expect(serialized).not.toContain(field);
+    }
+  });
+
+  it('قائمة المستخدمين تحمل الحقول التي تحتاجها الواجهة فعلًا', async () => {
+    await actAs(ADMIN);
+    const [first] = await listUsers({});
+    expect(first).toMatchObject({
+      id: expect.any(String),
+      email: expect.any(String),
+      twoFactorEnabled: expect.any(Boolean),
+    });
+    expect(first?.role?.nameAr).toBeTruthy();
   });
 });

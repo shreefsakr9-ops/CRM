@@ -1,4 +1,5 @@
 import 'server-only';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { cookies, headers } from 'next/headers';
 import { cache } from 'react';
 import { prisma } from '@/server/db';
@@ -43,6 +44,62 @@ export async function createSession(userId: string, ip?: string, userAgent?: str
     maxAge: ABSOLUTE_HOURS * 3600,
   });
   return token;
+}
+
+/* ── تحدي المصادقة الثنائية ─────────────────────────── */
+
+export const TWO_FACTOR_COOKIE = 'bp_2fa';
+const CHALLENGE_MINUTES = 5;
+
+function challengeSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 16) {
+    throw new Error('SESSION_SECRET غير مضبوط — لا يمكن توقيع تحدي المصادقة الثنائية');
+  }
+  return secret;
+}
+
+/**
+ * كوكي قصير العمر يثبت أن كلمة المرور صحيحة — ولا يمنح أي وصول بذاته.
+ * موقّع بـHMAC حتى لا يستطيع أحد انتحال هوية مستخدم آخر بتعديل قيمته.
+ */
+export async function setTwoFactorChallenge(userId: string) {
+  const expiresAt = Date.now() + CHALLENGE_MINUTES * 60_000;
+  const payload = `${userId}.${expiresAt}`;
+  const signature = createHmac('sha256', challengeSecret()).update(payload).digest('base64url');
+  const jar = await cookies();
+  jar.set(TWO_FACTOR_COOKIE, `${payload}.${signature}`, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: CHALLENGE_MINUTES * 60,
+  });
+}
+
+export async function readTwoFactorChallenge(): Promise<string | null> {
+  const jar = await cookies();
+  const raw = jar.get(TWO_FACTOR_COOKIE)?.value;
+  if (!raw) return null;
+
+  const parts = raw.split('.');
+  if (parts.length !== 3) return null;
+  const [userId, expiresAt, signature] = parts as [string, string, string];
+
+  const expected = createHmac('sha256', challengeSecret())
+    .update(`${userId}.${expiresAt}`)
+    .digest('base64url');
+  const a = Buffer.from(signature);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  if (Number(expiresAt) < Date.now()) return null;
+
+  return userId;
+}
+
+export async function clearTwoFactorChallenge() {
+  const jar = await cookies();
+  jar.delete(TWO_FACTOR_COOKIE);
 }
 
 export async function destroyCurrentSession() {

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { requireUser } from '@/server/auth/guard';
 import { prisma } from '@/server/db';
 import { PageHeader } from '@/components/page-header';
+import { twoFactorStatus } from '@/server/services/two-factor';
 import { ProfileClient } from './profile-client';
 import { plain } from '@/lib/utils';
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  const [me, sessions] = await Promise.all([
+  const [me, sessions, twoFactor] = await Promise.all([
     prisma.user.findUniqueOrThrow({
       where: { id: user.id },
       select: {
@@ -32,6 +33,7 @@ export default async function ProfilePage() {
       orderBy: { lastSeenAt: 'desc' },
       select: { id: true, ip: true, userAgent: true, createdAt: true, lastSeenAt: true },
     }),
+    twoFactorStatus(),
   ]);
 
   return (
@@ -45,6 +47,7 @@ export default async function ProfilePage() {
         me={plain(me) as never}
         sessions={plain(sessions) as never}
         currentSessionId={user.sessionId}
+        twoFactor={twoFactor}
       />
     </div>
   );

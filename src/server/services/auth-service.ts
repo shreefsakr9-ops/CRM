@@ -7,7 +7,15 @@ import {
   randomToken,
   sha256,
 } from '@/server/auth/password';
-import { createSession, revokeAllSessions, getRequestMeta } from '@/server/auth/session';
+import {
+  createSession,
+  revokeAllSessions,
+  getRequestMeta,
+  setTwoFactorChallenge,
+  readTwoFactorChallenge,
+  clearTwoFactorChallenge,
+} from '@/server/auth/session';
+import { consumeTwoFactorChallenge } from './two-factor';
 import { audit } from './audit';
 import { sendMail, renderEmail, appUrl } from './mailer';
 import { AppError, BadRequest } from '@/server/auth/guard';
@@ -38,6 +46,8 @@ async function isRateLimited(email: string): Promise<boolean> {
 
 export type LoginResult =
   | { ok: true; mustResetPassword: boolean }
+  /** كلمة المرور صحيحة لكن الحساب يتطلب رمز المصادقة الثنائية. */
+  | { ok: true; twoFactorRequired: true }
   | { ok: false; error: string };
 
 export async function login(emailRaw: string, password: string): Promise<LoginResult> {
@@ -89,22 +99,72 @@ export async function login(emailRaw: string, password: string): Promise<LoginRe
     return { ok: false, error: 'الحساب معطّل — تواصل مع الإدارة' };
   }
 
-  const meta = await getRequestMeta();
+  // كلمة المرور صحيحة. عدّاد المحاولات يُصفَّر الآن، لكن لا جلسة قبل العامل الثاني.
   await prisma.user.update({
     where: { id: user.id },
-    data: { lastLoginAt: new Date(), failedLoginCount: 0, lockedUntil: null },
+    data: { failedLoginCount: 0, lockedUntil: null },
   });
-  await createSession(user.id, meta.ip, meta.userAgent);
+
+  if (user.twoFactorEnabled && user.twoFactorSecret) {
+    await setTwoFactorChallenge(user.id);
+    // لا نسجّل المحاولة كناجحة بعد — الدخول لم يكتمل.
+    await recordAttempt(email, false, 'AWAITING_2FA');
+    return { ok: true, twoFactorRequired: true };
+  }
+
+  await completeLogin(user.id, email);
+  return { ok: true, mustResetPassword: user.mustResetPassword };
+}
+
+async function completeLogin(userId: string, email: string) {
+  const meta = await getRequestMeta();
+  await prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
+  await createSession(userId, meta.ip, meta.userAgent);
   await recordAttempt(email, true);
   await audit({
-    userId: user.id,
+    userId,
     action: 'LOGIN',
     module: 'users',
     entityType: 'USER',
-    entityId: user.id,
+    entityId: userId,
     summary: 'تسجيل دخول ناجح',
   });
+}
 
+/**
+ * الخطوة الثانية: لا تُقبل إلا بوجود تحدٍ موقّع صالح، أي أن كلمة المرور
+ * تحققت خلال آخر خمس دقائق. المحاولات الفاشلة تُحسب ضمن نفس حد المعدل.
+ */
+export async function completeTwoFactorLogin(code: string): Promise<LoginResult> {
+  const userId = await readTwoFactorChallenge();
+  if (!userId) return { ok: false, error: 'انتهت مهلة التحقق — سجّل الدخول من جديد' };
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive || user.deletedAt) {
+    await clearTwoFactorChallenge();
+    return { ok: false, error: 'بيانات الدخول غير صحيحة' };
+  }
+
+  if (await isRateLimited(user.email)) {
+    return { ok: false, error: 'محاولات كثيرة — حاول بعد ١٥ دقيقة' };
+  }
+
+  const result = await consumeTwoFactorChallenge(userId, code);
+  if (!result.ok) {
+    await recordAttempt(user.email, false, 'BAD_2FA');
+    await audit({
+      userId,
+      action: 'LOGIN_FAILED',
+      module: 'users',
+      entityType: 'USER',
+      entityId: userId,
+      summary: 'رمز مصادقة ثنائية غير صحيح',
+    });
+    return { ok: false, error: result.error };
+  }
+
+  await clearTwoFactorChallenge();
+  await completeLogin(userId, user.email);
   return { ok: true, mustResetPassword: user.mustResetPassword };
 }
 

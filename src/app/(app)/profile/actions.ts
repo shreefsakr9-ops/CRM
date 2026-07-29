@@ -7,6 +7,13 @@ import { requireUser, AppError } from '@/server/auth/guard';
 import { updateOwnProfile } from '@/server/services/users';
 import { changeOwnPassword } from '@/server/services/auth-service';
 import { audit } from '@/server/services/audit';
+import {
+  beginTwoFactorSetup,
+  confirmTwoFactor,
+  disableTwoFactor,
+  regenerateRecoveryCodes,
+  type TwoFactorSetup,
+} from '@/server/services/two-factor';
 
 export type Result = { ok: true } | { ok: false; error: string };
 
@@ -60,5 +67,47 @@ export async function revokeSessionAction(sessionId: string): Promise<Result> {
       summary: 'إنهاء جلسة نشطة',
     });
     revalidatePath('/profile');
+  });
+}
+
+/* ── المصادقة الثنائية ───────────────────────────────── */
+
+export type DataResult<T> = { ok: true; data: T } | { ok: false; error: string };
+
+async function guardData<T>(fn: () => Promise<T>): Promise<DataResult<T>> {
+  try {
+    return { ok: true, data: await fn() };
+  } catch (e) {
+    if (e instanceof AppError) return { ok: false, error: e.message };
+    if (e instanceof z.ZodError) return { ok: false, error: e.issues[0]?.message ?? 'بيانات غير صالحة' };
+    console.error('[profile 2fa action]', e);
+    return { ok: false, error: 'حدث خطأ غير متوقع' };
+  }
+}
+
+export async function beginTwoFactorAction(): Promise<DataResult<TwoFactorSetup>> {
+  return guardData(() => beginTwoFactorSetup());
+}
+
+export async function confirmTwoFactorAction(code: string): Promise<DataResult<string[]>> {
+  return guardData(async () => {
+    const { recoveryCodes } = await confirmTwoFactor(code);
+    revalidatePath('/profile');
+    return recoveryCodes;
+  });
+}
+
+export async function disableTwoFactorAction(password: string): Promise<Result> {
+  return guard(async () => {
+    await disableTwoFactor(password);
+    revalidatePath('/profile');
+  });
+}
+
+export async function regenerateRecoveryCodesAction(password: string): Promise<DataResult<string[]>> {
+  return guardData(async () => {
+    const codes = await regenerateRecoveryCodes(password);
+    revalidatePath('/profile');
+    return codes;
   });
 }

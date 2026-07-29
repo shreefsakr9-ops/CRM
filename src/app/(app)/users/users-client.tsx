@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, KeyRound, Ban, Pencil, Copy } from 'lucide-react';
+import { UserPlus, KeyRound, Ban, Pencil, Copy, ShieldOff } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { Drawer, ConfirmDialog } from '@/components/ui/drawer';
 import { Avatar, Badge, Button, Checkbox, Field, Input, Select } from '@/components/ui/primitives';
@@ -12,6 +12,7 @@ import {
   createUserAction,
   updateUserAction,
   deactivateUserAction,
+  resetTwoFactorAction,
   forceResetAction,
 } from './actions';
 
@@ -30,6 +31,7 @@ interface Row {
   salesTargetMinor: number;
   isActive: boolean;
   mustResetPassword: boolean;
+  twoFactorEnabled: boolean;
   lastLoginAt: string | null;
   avatarUrl: string | null;
   role: { key: string; nameAr: string };
@@ -124,6 +126,7 @@ export function UsersClient({
             {r.isActive ? 'نشط' : 'معطّل'}
           </Badge>
           {r.mustResetPassword && <Badge tone="warn">تغيير كلمة المرور</Badge>}
+          {r.twoFactorEnabled && <Badge tone="info">تحقق بخطوتين</Badge>}
         </div>
       ),
     },
@@ -153,6 +156,22 @@ export function UsersClient({
                 >
                   <KeyRound className="h-3.5 w-3.5" />
                 </Button>
+                {r.twoFactorEnabled && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      const res = await resetTwoFactorAction(r.id);
+                      if (!res.ok) toast.error(res.error);
+                      else toast.success('أُعيد تعيين المصادقة الثنائية وأُنهيت جلسات المستخدم');
+                      router.refresh();
+                    }}
+                    type="button"
+                    title="إعادة تعيين المصادقة الثنائية (عند فقد الجهاز)"
+                  >
+                    <ShieldOff className="h-3.5 w-3.5 text-warn" />
+                  </Button>
+                )}
                 {r.isActive && r.id !== currentUserId && (
                   <Button
                     variant="ghost"
