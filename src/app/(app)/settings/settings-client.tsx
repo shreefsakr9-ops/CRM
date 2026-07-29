@@ -47,6 +47,7 @@ interface Settings {
   files: { maxSizeMb: number; retentionDays: number; allowedTypes: string[] };
   backup: { enabled: boolean; retentionDays: number; notifyEmail: string };
   security: { requireTwoFactorRoles: string[] };
+  reports: { digestEnabled: boolean; digestPeriod: 'WEEKLY' | 'MONTHLY'; digestRoles: string[] };
 }
 
 interface Reference {
@@ -595,6 +596,7 @@ export function SettingsClient({
       {tab === 'mail' && <MailPanel mail={mail} canManage={canManage} />}
 
       {tab === 'security' && (
+        <div className="grid gap-4 lg:grid-cols-2">
         <SecurityPanel
           value={settings.security.requireTwoFactorRoles}
           roles={reference.roles}
@@ -602,6 +604,14 @@ export function SettingsClient({
           pending={pending}
           onSave={(roles) => save('security', { requireTwoFactorRoles: roles })}
         />
+        <ReportDigestPanel
+          value={settings.reports}
+          roles={reference.roles}
+          canEdit={canEdit}
+          pending={pending}
+          onSave={(v) => save('reports', v)}
+        />
+        </div>
       )}
 
       <ReferenceDrawer
@@ -1063,6 +1073,107 @@ function SecurityPanel({
             <Button type="button" loading={pending} onClick={() => onSave(selected)}>
               <Save className="h-4 w-4" />
               حفظ سياسة الحماية
+            </Button>
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
+ * الملخص الإداري الدوري بالبريد.
+ * كل مستلم يحصل على الأرقام التي تسمح بها صلاحياته ونطاق بياناته — لا نسخة
+ * واحدة تُرسل للجميع.
+ */
+function ReportDigestPanel({
+  value,
+  roles,
+  canEdit,
+  pending,
+  onSave,
+}: {
+  value: { digestEnabled: boolean; digestPeriod: 'WEEKLY' | 'MONTHLY'; digestRoles: string[] };
+  roles: { key: string; nameAr: string }[];
+  canEdit: boolean;
+  pending: boolean;
+  onSave: (value: Record<string, unknown>) => void;
+}) {
+  const [enabled, setEnabled] = React.useState(value.digestEnabled);
+  const [period, setPeriod] = React.useState(value.digestPeriod);
+  const [selected, setSelected] = React.useState<string[]>(value.digestRoles);
+
+  const toggle = (key: string) =>
+    setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
+  return (
+    <Card>
+      <CardHeader
+        title="الملخص الإداري بالبريد"
+        subtitle="أرقام الفترة تصل لمن تحدده دون الحاجة لفتح النظام"
+      />
+      <CardBody className="space-y-4">
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <Checkbox
+            checked={enabled}
+            onChange={(e) => setEnabled(e.currentTarget.checked)}
+            disabled={!canEdit}
+          />
+          تفعيل الإرسال الدوري
+        </label>
+
+        <Field label="الدورية" hint="الأسبوعي يُرسل الاثنين، والشهري أول كل شهر — ٠٨:٠٠ بتوقيت القاهرة">
+          <Select
+            value={period}
+            onChange={(e) => setPeriod(e.currentTarget.value as 'WEEKLY' | 'MONTHLY')}
+            disabled={!canEdit || !enabled}
+            options={[
+              { value: 'WEEKLY', label: 'أسبوعي' },
+              { value: 'MONTHLY', label: 'شهري' },
+            ]}
+          />
+        </Field>
+
+        <div>
+          <p className="bp-label">الأدوار المستلِمة</p>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {roles.map((role) => (
+              <label
+                key={role.key}
+                className={cn(
+                  'flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors',
+                  selected.includes(role.key)
+                    ? 'border-brand/40 bg-brand/10 text-ink'
+                    : 'border-line text-ink-muted hover:border-line-strong',
+                  (!canEdit || !enabled) && 'pointer-events-none opacity-60',
+                )}
+              >
+                <Checkbox
+                  checked={selected.includes(role.key)}
+                  onChange={() => toggle(role.key)}
+                  disabled={!canEdit || !enabled}
+                />
+                <span className="min-w-0 truncate">{role.nameAr}</span>
+              </label>
+            ))}
+          </div>
+          <p className="bp-hint mt-1.5">
+            من لا يملك صلاحية عرض التقارير لا يصله شيء، ومن لا يملك عرض القيم المالية يصله الملخص
+            بدونها.
+          </p>
+        </div>
+
+        {canEdit && (
+          <div className="flex justify-end border-t border-line pt-4">
+            <Button
+              type="button"
+              loading={pending}
+              onClick={() =>
+                onSave({ digestEnabled: enabled, digestPeriod: period, digestRoles: selected })
+              }
+            >
+              <Save className="h-4 w-4" />
+              حفظ إعدادات الملخص
             </Button>
           </div>
         )}

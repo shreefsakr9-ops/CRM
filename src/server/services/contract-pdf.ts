@@ -2,7 +2,7 @@ import 'server-only';
 import { getContract } from './contracts';
 import { htmlToPdf } from './pdf';
 import { documentShell, esc, type Lang } from './pdf-layout';
-import { formatMoney, formatDate, currencySymbol } from '@/lib/format';
+import { formatMoney, formatDate, currencySymbol, daysLabel, monthsLabel } from '@/lib/format';
 import { audit } from './audit';
 import { requireUser } from '@/server/auth/guard';
 import { CONTRACT_STATUS, INVOICE_STATUS } from '@/i18n/labels';
@@ -84,27 +84,12 @@ const T = {
   },
 } as const;
 
-/**
- * صيغة العدد بالعربية تختلف حسب الكمية (مفرد/مثنى/جمع قلة/تمييز مفرد منصوب).
- * كتابة «3 شهرًا» خطأ لغوي واضح في مستند يصل للعميل.
- */
-function pluralAr(count: number, forms: [string, string, string, string]): string {
-  if (count === 1) return forms[0];
-  if (count === 2) return forms[1];
-  if (count >= 3 && count <= 10) return `${count} ${forms[2]}`;
-  return `${count} ${forms[3]}`;
-}
-
 function durationLabel(days: number, lang: Lang): string {
   if (days >= 60) {
     const months = Math.round(days / 30);
-    return lang === 'ar'
-      ? pluralAr(months, ['شهر واحد', 'شهران', 'أشهر', 'شهرًا'])
-      : `${months} month${months === 1 ? '' : 's'}`;
+    return lang === 'ar' ? monthsLabel(months) : `${months} month${months === 1 ? '' : 's'}`;
   }
-  return lang === 'ar'
-    ? pluralAr(days, ['يوم واحد', 'يومان', 'أيام', 'يومًا'])
-    : `${days} day${days === 1 ? '' : 's'}`;
+  return lang === 'ar' ? daysLabel(days) : `${days} day${days === 1 ? '' : 's'}`;
 }
 
 export async function renderContractHtml(id: string, lang: Lang = 'ar') {

@@ -200,6 +200,49 @@ async function loadSession(): Promise<CurrentUser | null> {
 /** مُخزَّن لكل طلب (React cache) حتى لا نستعلم أكثر من مرة. */
 export const getCurrentUser = cache(loadSession);
 
+/**
+ * يبني هوية مستخدم كاملة من معرّفه بلا جلسة — للـWorker وحده.
+ * يستخدم نفس بناء خريطة الصلاحيات ونفس حساب الفريق المستخدمين في الطلبات،
+ * فلا تختلف نتيجة أي خدمة باختلاف مصدر الاستدعاء.
+ */
+export async function buildActor(userId: string): Promise<CurrentUser | null> {
+  const user = await prisma.user.findFirst({
+    where: { id: userId, isActive: true, deletedAt: null },
+    include: { role: { include: { permissions: true } }, overrides: true },
+  });
+  if (!user) return null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    nameEn: user.nameEn,
+    avatarUrl: user.avatarUrl,
+    roleId: user.roleId,
+    roleKey: user.role.key,
+    departmentId: user.departmentId,
+    locale: user.locale,
+    timezone: user.timezone,
+    mustResetPassword: user.mustResetPassword,
+    permissions: buildPermissionMap(
+      user.role.permissions.map((p) => ({
+        module: p.module,
+        action: p.action,
+        scope: p.scope as Scope,
+      })),
+      user.overrides.map((o) => ({
+        module: o.module,
+        action: o.action,
+        scope: o.scope as Scope,
+        allow: o.allow,
+      })),
+    ),
+    teamIds: await resolveTeamIds(user.id),
+    // لا جلسة حقيقية — القيمة تميّز السياق في السجلات.
+    sessionId: 'worker',
+  };
+}
+
 export async function getRequestMeta() {
   const h = await headers();
   return {

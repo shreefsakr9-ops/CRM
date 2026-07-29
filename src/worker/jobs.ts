@@ -2,6 +2,7 @@ import { prisma } from '@/server/db';
 import { notify } from '@/server/services/notifications';
 import { sendMail, renderEmail, appUrl, isMailEnabled } from '@/server/services/mailer';
 import { NOTIFICATION_TYPE } from '@/i18n/labels';
+import { sendReportDigest } from '@/server/services/report-digest';
 import { getSettings } from '@/server/services/settings';
 import { refreshOverdueInvoices } from '@/server/services/invoices';
 import { evaluateProjectRisk } from '@/server/services/projects';
@@ -504,6 +505,34 @@ export async function jobWeeklyDigest(): Promise<JobResult> {
   return runDigest('WEEKLY');
 }
 
+/**
+ * الملخص الإداري الدوري: الاثنين ٠٦:٠٠ UTC للأسبوعي، وأول الشهر للشهري.
+ * يُبنى لكل مستلم بهويته فتنطبق صلاحياته — التفاصيل في `report-digest.ts`.
+ */
+export async function jobReportDigest(): Promise<JobResult> {
+  const key = 'report_digest';
+  const now = new Date();
+  if (now.getUTCHours() !== 6) {
+    return { key, count: 0, message: 'خارج موعد الإرسال', skipped: true };
+  }
+
+  const settings = await getSettings();
+  const period = settings.reports.digestPeriod;
+  const onSchedule = period === 'WEEKLY' ? now.getUTCDay() === 1 : now.getUTCDate() === 1;
+  if (!onSchedule) return { key, count: 0, message: 'ليس يوم الإرسال', skipped: true };
+
+  // منع التكرار: التشغيلات المتخطّاة تُسجَّل SKIPPED فلا تحجب الإرسال الحقيقي.
+  const windowMs = period === 'WEEKLY' ? 6 * day : 20 * day;
+  const already = await prisma.jobRun.findFirst({
+    where: { key, status: 'SUCCESS', endedAt: { gte: new Date(now.getTime() - windowMs) } },
+  });
+  if (already) return { key, count: 0, message: 'أُرسل بالفعل خلال هذه الفترة', skipped: true };
+
+  const result = await sendReportDigest(period);
+  if (result.reason) return { key, count: result.sent, message: result.reason, skipped: true };
+  return { key, count: result.sent, message: `تخطّي ${result.skipped}` };
+}
+
 export const ALL_JOBS = [
   jobUncontactedLeads,
   jobFollowUps,
@@ -516,6 +545,7 @@ export const ALL_JOBS = [
   jobRecurringTasks,
   jobDailyDigest,
   jobWeeklyDigest,
+  jobReportDigest,
 ];
 
 export async function runAllJobs() {

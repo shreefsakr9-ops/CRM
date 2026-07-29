@@ -1,4 +1,5 @@
 import 'server-only';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { getCurrentUser, type CurrentUser } from './session';
 import type { ActionKey, ModuleKey, PermissionKey, Scope } from './permissions';
 
@@ -20,7 +21,31 @@ export const NotFound = (msg = 'السجل غير موجود') => new AppError(m
 export const BadRequest = (msg: string) => new AppError(msg, 400, 'BAD_REQUEST');
 export const Conflict = (msg: string) => new AppError(msg, 409, 'CONFLICT');
 
+/**
+ * هوية فاعلة صريحة للعمليات التي تجري خارج طلب ويب — الـWorker تحديدًا.
+ *
+ * لا توجد كوكيز في الـWorker، لذلك لا يستطيع `getCurrentUser` تحديد المستخدم.
+ * البديل السيّئ هو كتابة نسخة ثانية من كل تقرير بلا فحص صلاحيات، فتصير
+ * الأرقام المالية بمصدرين وتتسرب لمن لا يملك صلاحيتها. هنا نمرّر المستخدم
+ * صراحةً فتعمل نفس الخدمات بنفس الفحوص والنطاق.
+ *
+ * ملاحظة أمنية: لا يُضبط هذا المخزن إطلاقًا داخل مسار طلب ويب — الطلبات تحدد
+ * هويتها من كوكي الجلسة وحده.
+ */
+const actorStore = new AsyncLocalStorage<CurrentUser>();
+
+export function runAsUser<T>(user: CurrentUser, fn: () => Promise<T>): Promise<T> {
+  return actorStore.run(user, fn);
+}
+
+export function currentActor(): CurrentUser | undefined {
+  return actorStore.getStore();
+}
+
 export async function requireUser(): Promise<CurrentUser> {
+  // الهوية الصريحة أولًا (الـWorker)، وإلا فمن كوكي الجلسة (الطلبات).
+  const actor = actorStore.getStore();
+  if (actor) return actor;
   const user = await getCurrentUser();
   if (!user) throw Unauthorized();
   return user;

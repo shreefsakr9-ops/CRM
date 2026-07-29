@@ -42,6 +42,12 @@ export interface SystemSettings {
     /** مفاتيح الأدوار التي يُلزَم أصحابها بتفعيل المصادقة الثنائية قبل استخدام النظام. */
     requireTwoFactorRoles: string[];
   };
+  reports: {
+    /** ملخص دوري بالبريد لأصحاب الأدوار المحددة — يُبنى بهوية كل مستلم. */
+    digestEnabled: boolean;
+    digestPeriod: 'WEEKLY' | 'MONTHLY';
+    digestRoles: string[];
+  };
 }
 
 export const DEFAULT_SETTINGS: SystemSettings = {
@@ -99,6 +105,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   // الحسابات الأعلى صلاحية أولًا: من يملكها يستطيع تعديل الصلاحيات ورؤية كل
   // البيانات المالية، فاختراق واحد منها يكافئ اختراق النظام كله.
   security: { requireTwoFactorRoles: ['SUPER_ADMIN'] },
+  // معطّل افتراضيًا: إرسال أرقام الشركة بالبريد قرار إداري لا إعداد ضمني.
+  reports: { digestEnabled: false, digestPeriod: 'WEEKLY', digestRoles: [] },
 };
 
 type SettingsCache = { value: SystemSettings; at: number } | null;

@@ -22,9 +22,13 @@ export function clearUser() {
  * تستبدل طبقة الجلسة بحيث تعيد المستخدم الذي يحدده الاختبار.
  */
 export function mockSession() {
-  vi.mock('@/server/auth/session', async () => {
+  vi.mock('@/server/auth/session', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@/server/auth/session')>();
     const helpers = await import('./helpers');
     return {
+      // نبقي الدوال التي لا تعتمد على الكوكيز كما هي (مثل buildActor)، ونستبدل
+      // ما يقرأ الجلسة فقط. استبدال الوحدة بالكامل كان يخفي دوالّ حقيقية.
+      ...actual,
       SESSION_COOKIE: 'bp_session',
       getCurrentUser: async () => helpers.getActiveUser(),
       getRequestMeta: async () => ({ ip: '127.0.0.1', userAgent: 'vitest' }),

@@ -114,3 +114,27 @@ export function daysBetween(a: Date | string, b: Date | string = new Date()) {
   const d2 = typeof b === 'string' ? new Date(b) : b;
   return Math.round((d1.getTime() - d2.getTime()) / 86_400_000);
 }
+
+/**
+ * صيغة العدد بالعربية تختلف حسب الكمية: مفرد، مثنى، جمع قلة (٣–١٠)، ثم تمييز
+ * مفرد منصوب (١١+). كتابة «7 يومًا» أو «3 شهرًا» خطأ لغوي ظاهر في نص يقرأه
+ * العميل أو الإدارة.
+ */
+export function pluralAr(
+  count: number,
+  forms: [one: string, two: string, few: string, many: string],
+): string {
+  if (count === 1) return forms[0];
+  if (count === 2) return forms[1];
+  if (count >= 3 && count <= 10) return `${count} ${forms[2]}`;
+  return `${count} ${forms[3]}`;
+}
+
+/** «٧ أيام» / «شهران» — يُستخدم في المستندات والرسائل. */
+export function daysLabel(days: number): string {
+  return pluralAr(days, ['يوم واحد', 'يومان', 'أيام', 'يومًا']);
+}
+
+export function monthsLabel(months: number): string {
+  return pluralAr(months, ['شهر واحد', 'شهران', 'أشهر', 'شهرًا']);
+}
