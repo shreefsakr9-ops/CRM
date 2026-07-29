@@ -3,7 +3,8 @@ import type { Metadata } from 'next';
 import { requirePermission } from '@/server/auth/guard';
 import { getContract } from '@/server/services/contracts';
 import { PageHeader } from '@/components/page-header';
-import { Badge, Card, CardBody, CardHeader, KeyValue } from '@/components/ui/primitives';
+import { Eye, FileDown } from 'lucide-react';
+import { Badge, Button, Card, CardBody, CardHeader, KeyValue } from '@/components/ui/primitives';
 import { formatDate, formatMoney, daysBetween } from '@/lib/format';
 import { label, tone } from '@/i18n/labels';
 
@@ -47,6 +48,28 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
             {daysToRenewal !== null && daysToRenewal >= 0 && daysToRenewal <= 30 && (
               <Badge tone="warn">التجديد بعد {daysToRenewal} يوم</Badge>
             )}
+          </div>
+        }
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/contracts/${id}/pdf?preview=1`} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="ghost">
+                <Eye className="h-3.5 w-3.5" />
+                معاينة الملخص
+              </Button>
+            </a>
+            <a href={`/api/contracts/${id}/pdf?lang=ar`} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="secondary">
+                <FileDown className="h-3.5 w-3.5" />
+                ملخص PDF عربي
+              </Button>
+            </a>
+            <a href={`/api/contracts/${id}/pdf?lang=en`} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="secondary">
+                <FileDown className="h-3.5 w-3.5" />
+                Summary PDF
+              </Button>
+            </a>
           </div>
         }
       />

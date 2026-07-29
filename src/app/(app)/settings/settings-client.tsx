@@ -181,6 +181,18 @@ export function SettingsClient({
               <Field label="الموقع الإلكتروني">
                 <Input name="website" defaultValue={settings.company.website} dir="ltr" disabled={!canEdit} />
               </Field>
+              <Field
+                label="بيانات السداد"
+                hint="تظهر أسفل كل فاتورة PDF — لا تضع هنا بيانات لا يجوز للعميل رؤيتها"
+                className="sm:col-span-2"
+              >
+                <Textarea
+                  name="bankDetails"
+                  rows={3}
+                  defaultValue={settings.company.bankDetails}
+                  disabled={!canEdit}
+                />
+              </Field>
             </CardBody>
           </Card>
           {canEdit && (

@@ -13,6 +13,8 @@ export interface CompanyInfo {
   email: string;
   website: string;
   logoUrl: string;
+  /** تعليمات السداد كما تظهر أسفل الفاتورة — لا تضع بيانات حساسة لا يجوز للعميل رؤيتها. */
+  bankDetails: string;
 }
 
 export interface SystemSettings {
@@ -50,6 +52,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     email: '',
     website: '',
     logoUrl: '/brand/logo.svg',
+    bankDetails: '',
   },
   brand: { navy: '#0B1A2F', blue: '#2C7BE5', cyan: '#3FC8F5', red: '#F5333F' },
   locale: { defaultLocale: 'ar', timezone: 'Africa/Cairo', baseCurrency: 'EGP' },

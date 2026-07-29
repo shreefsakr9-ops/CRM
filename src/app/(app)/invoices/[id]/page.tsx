@@ -3,7 +3,8 @@ import type { Metadata } from 'next';
 import { requirePermission, can } from '@/server/auth/guard';
 import { getInvoice } from '@/server/services/invoices';
 import { PageHeader } from '@/components/page-header';
-import { Badge, Card, CardBody, CardHeader, KeyValue, Progress } from '@/components/ui/primitives';
+import { Eye, FileDown } from 'lucide-react';
+import { Badge, Button, Card, CardBody, CardHeader, KeyValue, Progress } from '@/components/ui/primitives';
 import { formatDate, formatMoney } from '@/lib/format';
 import { label, tone } from '@/i18n/labels';
 import { plain } from '@/lib/utils';
@@ -49,20 +50,40 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </Badge>
         }
         actions={
-          <InvoiceActions
-            invoice={plain({
-              id: invoice.id,
-              number: invoice.number,
-              status: invoice.status,
-              clientId: invoice.clientId,
-              currency: invoice.currency,
-              remainingMinor: invoice.totalMinor - invoice.paidMinor,
-            }) as never}
-            perms={{
-              canEdit: can(user, 'invoices', 'edit'),
-              canRecordPayment: can(user, 'payments', 'create'),
-            }}
-          />
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/invoices/${id}/pdf?preview=1`} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="ghost">
+                <Eye className="h-3.5 w-3.5" />
+                معاينة
+              </Button>
+            </a>
+            <a href={`/api/invoices/${id}/pdf?lang=ar`} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="secondary">
+                <FileDown className="h-3.5 w-3.5" />
+                PDF عربي
+              </Button>
+            </a>
+            <a href={`/api/invoices/${id}/pdf?lang=en`} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" variant="secondary">
+                <FileDown className="h-3.5 w-3.5" />
+                PDF English
+              </Button>
+            </a>
+            <InvoiceActions
+              invoice={plain({
+                id: invoice.id,
+                number: invoice.number,
+                status: invoice.status,
+                clientId: invoice.clientId,
+                currency: invoice.currency,
+                remainingMinor: invoice.totalMinor - invoice.paidMinor,
+              }) as never}
+              perms={{
+                canEdit: can(user, 'invoices', 'edit'),
+                canRecordPayment: can(user, 'payments', 'create'),
+              }}
+            />
+          </div>
         }
       />
 
