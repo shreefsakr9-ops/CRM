@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { requirePermission } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getProject, projectFormOptions } from '@/server/services/projects';
 import { PageHeader } from '@/components/page-header';
 import { ProjectForm } from '../../project-form';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export default async function EditProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await requirePermission('projects', 'edit');
-  const [project, options] = await Promise.all([getProject(id), projectFormOptions()]);
+  const [project, options] = await Promise.all([findOr404(() => getProject(id)), projectFormOptions()]);
 
   return (
     <div className="space-y-5">

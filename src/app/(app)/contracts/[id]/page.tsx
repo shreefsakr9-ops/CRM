@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { requirePermission } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getContract } from '@/server/services/contracts';
 import { PageHeader } from '@/components/page-header';
 import { Eye, FileDown } from 'lucide-react';
@@ -27,7 +28,7 @@ export async function generateMetadata({
 export default async function ContractDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePermission('contracts', 'view');
-  const contract = await getContract(id);
+  const contract = await findOr404(() => getContract(id));
   const daysToRenewal = contract.renewalDate ? daysBetween(contract.renewalDate) : null;
 
   return (

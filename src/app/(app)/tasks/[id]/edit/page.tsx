@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { requirePermission } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getTask, taskFormOptions } from '@/server/services/tasks';
 import { PageHeader } from '@/components/page-header';
 import { TaskForm } from '../../task-form';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export default async function EditTaskPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await requirePermission('tasks', 'edit');
-  const [task, options] = await Promise.all([getTask(id), taskFormOptions()]);
+  const [task, options] = await Promise.all([findOr404(() => getTask(id)), taskFormOptions()]);
 
   return (
     <div className="space-y-5">

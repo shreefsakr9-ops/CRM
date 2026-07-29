@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { requirePermission, can } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getDeal } from '@/server/services/deals';
 import { PageHeader } from '@/components/page-header';
 import { Badge, Card, CardBody, CardHeader, KeyValue, Button } from '@/components/ui/primitives';
@@ -27,7 +28,7 @@ export async function generateMetadata({
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePermission('deals', 'view');
-  const deal = await getDeal(id);
+  const deal = await findOr404(() => getDeal(id));
   const showMoney = deal.valueMinor !== null;
 
   return (

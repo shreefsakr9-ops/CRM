@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Pencil, Plus } from 'lucide-react';
 import { requirePermission, can } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getProject } from '@/server/services/projects';
 import { PageHeader } from '@/components/page-header';
 import {
@@ -38,7 +39,7 @@ export async function generateMetadata({
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePermission('projects', 'view');
-  const project = await getProject(id);
+  const project = await findOr404(() => getProject(id));
   const daysLeft = project.endDate ? daysBetween(project.endDate) : null;
 
   return (

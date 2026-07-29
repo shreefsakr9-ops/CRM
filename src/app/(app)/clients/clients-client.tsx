@@ -8,7 +8,8 @@ import { FiltersBar } from '@/components/filters-bar';
 import { Drawer, ConfirmDialog } from '@/components/ui/drawer';
 import { Avatar, Badge, Button } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
-import { formatDate, formatRelative } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { RelativeTime } from '@/components/relative-time';
 import { label, tone, options as labelOptions } from '@/i18n/labels';
 import { deleteClientAction } from './actions';
 import { ClientForm } from './client-form';
@@ -120,9 +121,7 @@ export function ClientsClient({
       defaultHidden: true,
       exportValue: (r) => r.lastContactAt ?? '',
       render: (r) => (
-        <span className="text-xs text-ink-muted">
-          {r.lastContactAt ? formatRelative(r.lastContactAt) : '—'}
-        </span>
+        <RelativeTime value={r.lastContactAt} className="text-xs text-ink-muted" />
       ),
     },
     {

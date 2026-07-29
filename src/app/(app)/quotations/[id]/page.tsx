@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { FileDown, Eye, Pencil } from 'lucide-react';
 import { requirePermission, can } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getQuotation } from '@/server/services/quotations';
 import { PageHeader } from '@/components/page-header';
 import { Badge, Button, Card, CardBody, CardHeader, KeyValue } from '@/components/ui/primitives';
@@ -28,7 +29,7 @@ export async function generateMetadata({
 export default async function QuotationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePermission('quotations', 'view');
-  const q = await getQuotation(id);
+  const q = await findOr404(() => getQuotation(id));
   const money = (v: bigint) => formatMoney(v, q.currency);
 
   return (

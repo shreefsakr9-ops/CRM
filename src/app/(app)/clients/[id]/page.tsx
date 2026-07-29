@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { requirePermission, can } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getClient, clientFormOptions } from '@/server/services/clients';
 import { PageHeader } from '@/components/page-header';
 import { Badge, Card, CardBody, CardHeader, KeyValue, Progress } from '@/components/ui/primitives';
@@ -29,7 +30,7 @@ export async function generateMetadata({
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePermission('clients', 'view');
-  const [client, options] = await Promise.all([getClient(id), clientFormOptions()]);
+  const [client, options] = await Promise.all([findOr404(() => getClient(id)), clientFormOptions()]);
 
   return (
     <div className="space-y-5">

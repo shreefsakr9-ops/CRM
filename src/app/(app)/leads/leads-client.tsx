@@ -9,7 +9,8 @@ import { FiltersBar } from '@/components/filters-bar';
 import { Drawer, ConfirmDialog } from '@/components/ui/drawer';
 import { Avatar, Badge, Button, Field, Select, Input } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
-import { formatDate, formatMoney, formatRelative } from '@/lib/format';
+import { formatDate, formatMoney } from '@/lib/format';
+import { RelativeTime } from '@/components/relative-time';
 import { label, tone, options as labelOptions } from '@/i18n/labels';
 import { assignLeadsAction, deleteLeadAction, restoreLeadAction, importLeadsAction } from './actions';
 
@@ -184,9 +185,10 @@ export function LeadsClient({
         if (!r.nextFollowUpAt) return <Badge tone="warn">بدون متابعة</Badge>;
         const overdue = new Date(r.nextFollowUpAt).getTime() < now;
         return (
-          <span className={overdue ? 'text-xs text-danger' : 'text-xs text-ink-muted'}>
-            {formatRelative(r.nextFollowUpAt)}
-          </span>
+          <RelativeTime
+            value={r.nextFollowUpAt}
+            className={overdue ? 'text-xs text-danger' : 'text-xs text-ink-muted'}
+          />
         );
       },
     },

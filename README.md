@@ -78,8 +78,9 @@ npm run worker
 | `npm run worker` | خدمة التنبيهات والوظائف المجدولة |
 | `npm run worker:once` | تنفيذ دورة واحدة من الوظائف |
 | `npm run typecheck` | فحص الأنواع |
-| `npm test` | تشغيل كل الاختبارات |
+| `npm test` | اختبارات الوحدة والتكامل (سريعة) |
 | `npm run test:setup` | تجهيز قاعدة بيانات الاختبار |
+| `npm run test:e2e` | اختبارات المتصفح — تتطلب `npm run build` أولًا وChromium |
 | `npm run db:migrate` | إنشاء وتطبيق مايجريشن (تطوير) |
 | `npm run db:deploy` | تطبيق المايجريشن (إنتاج) |
 | `npm run db:seed` | زرع البيانات المرجعية والتجريبية |

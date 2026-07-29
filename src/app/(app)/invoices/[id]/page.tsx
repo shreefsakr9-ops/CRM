@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { requirePermission, can } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getInvoice } from '@/server/services/invoices';
 import { PageHeader } from '@/components/page-header';
 import { Eye, FileDown } from 'lucide-react';
@@ -29,7 +30,7 @@ export async function generateMetadata({
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePermission('invoices', 'view');
-  const invoice = await getInvoice(id);
+  const invoice = await findOr404(() => getInvoice(id));
   const money = (v: bigint) => formatMoney(v, invoice.currency);
   const paidPercent =
     invoice.totalMinor > 0n ? Number((invoice.paidMinor * 100n) / invoice.totalMinor) : 0;

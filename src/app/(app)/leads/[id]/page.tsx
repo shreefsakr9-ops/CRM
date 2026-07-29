@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Pencil, Phone, MessageCircle, Mail } from 'lucide-react';
 import { requirePermission, can } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getLead, leadFormOptions } from '@/server/services/leads';
 import { PageHeader } from '@/components/page-header';
 import { Badge, Button, Card, CardBody, CardHeader, KeyValue } from '@/components/ui/primitives';
@@ -30,7 +31,7 @@ export async function generateMetadata({
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePermission('leads', 'view');
-  const [lead, options] = await Promise.all([getLead(id), leadFormOptions()]);
+  const [lead, options] = await Promise.all([findOr404(() => getLead(id)), leadFormOptions()]);
   const showMoney = lead.estimatedValueMinor !== null;
 
   return (

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { CheckCheck, Bell, BellOff, Settings2 } from 'lucide-react';
 import { Badge, Button, Card, CardBody, CardHeader, Checkbox, EmptyState, Select } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
-import { formatRelative } from '@/lib/format';
+import { RelativeTime } from '@/components/relative-time';
 import { label, tone, NOTIFICATION_TYPE } from '@/i18n/labels';
 import { cn } from '@/lib/utils';
 import { markReadAction, markAllReadAction, setPreferenceAction } from './actions';
@@ -39,9 +39,14 @@ export function NotificationsClient({
   const toast = useToast();
   const [tab, setTab] = React.useState<'all' | 'unread' | 'settings'>('unread');
   const [browserPermission, setBrowserPermission] = React.useState<NotificationPermission>('default');
+  // دعم إشعارات المتصفح لا يُقرأ أثناء العرض: الخادم لا يعرف `Notification`
+  // فلا يرسم الزر، والمتصفح يعرفه فيرسمه — اختلاف يُفشل الترطيب ويعيد React
+  // بناء الصفحة. نقرأه بعد التركيب فيتطابق أول عرض على الجانبين.
+  const [supportsBrowserNotifications, setSupportsBrowserNotifications] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
+      setSupportsBrowserNotifications(true);
       setBrowserPermission(Notification.permission);
     }
   }, []);
@@ -91,7 +96,7 @@ export function NotificationsClient({
           </Button>
         )}
 
-        {tab !== 'settings' && 'Notification' in globalThis && browserPermission !== 'granted' && (
+        {tab !== 'settings' && supportsBrowserNotifications && browserPermission !== 'granted' && (
           <Button
             size="sm"
             variant="ghost"
@@ -198,7 +203,7 @@ export function NotificationsClient({
                   const content = (
                     <div
                       className={cn(
-                        'flex items-start gap-3 px-4 py-3 transition-colors hover:bg-navy-800/40',
+                        'pointer-events-none relative z-10 flex items-start gap-3 px-4 py-3',
                         !n.readAt && 'bg-brand/5',
                       )}
                     >
@@ -216,7 +221,7 @@ export function NotificationsClient({
                           </Badge>
                         </div>
                         {n.body && <p className="mt-0.5 text-xs text-ink-muted">{n.body}</p>}
-                        <p className="mt-1 text-[11px] text-ink-faint">{formatRelative(n.createdAt)}</p>
+                        <RelativeTime value={n.createdAt} className="mt-1 block text-[11px] text-ink-faint" />
                       </div>
                       {!n.readAt && (
                         <button
@@ -226,7 +231,7 @@ export function NotificationsClient({
                             await markReadAction([n.id]);
                             router.refresh();
                           }}
-                          className="shrink-0 rounded p-1 text-ink-faint hover:text-brand"
+                          className="pointer-events-auto shrink-0 rounded p-1 text-ink-faint hover:text-brand"
                           title="تعليم كمقروء"
                         >
                           <CheckCheck className="h-4 w-4" />
@@ -234,20 +239,23 @@ export function NotificationsClient({
                       )}
                     </div>
                   );
+                  // رابط مُغطٍّ لا رابط يلفّ البطاقة: البطاقة تحوي زر «تعليم
+                  // كمقروء»، ووضع <button> داخل <a> غير صالح في HTML. المتصفح
+                  // يعيد ترتيب الوسوم عند التحليل فيختلف الناتج عمّا بناه
+                  // React ويفشل الترطيب.
                   return (
-                    <li key={n.id}>
-                      {n.link ? (
+                    <li key={n.id} className="group relative">
+                      {n.link && (
                         <Link
                           href={n.link}
+                          aria-label={n.title}
+                          className="absolute inset-0 z-0 transition-colors group-hover:bg-navy-800/40"
                           onClick={() => {
                             if (!n.readAt) void markReadAction([n.id]);
                           }}
-                        >
-                          {content}
-                        </Link>
-                      ) : (
-                        content
+                        />
                       )}
+                      {content}
                     </li>
                   );
                 })}

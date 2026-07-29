@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { requirePermission, can } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getLead, leadFormOptions } from '@/server/services/leads';
 import { PageHeader } from '@/components/page-header';
 import { LeadForm } from '../../lead-form';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export default async function EditLeadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requirePermission('leads', 'edit');
-  const [lead, options] = await Promise.all([getLead(id), leadFormOptions()]);
+  const [lead, options] = await Promise.all([findOr404(() => getLead(id)), leadFormOptions()]);
 
   return (
     <div className="space-y-5">

@@ -94,8 +94,13 @@ export function FiltersBar({
         <div className="hidden flex-wrap items-center gap-2 sm:flex">
           {filters.map((f) => (
             <Select
-              key={f.key}
-              value={params.get(f.key) ?? ''}
+              // `defaultValue` لا `value` عمدًا: القائمة المتحكَّم بها تجعل
+              // الخادم يكتب `selected` على الخيار المطابق بينما لا يكتبه
+              // العميل، فيعتبره React عدم تطابق ترطيب ويعيد بناء الشجرة —
+              // خطأ ظهر فعلًا في console. الـ`key` يعيد التركيب عند تغيّر
+              // الرابط فتبقى القيمة المعروضة مطابقة للفلتر الفعلي.
+              key={`${f.key}:${params.get(f.key) ?? ''}`}
+              defaultValue={params.get(f.key) ?? ''}
               onChange={(e) => update({ [f.key]: e.target.value })}
               className="h-10 w-auto min-w-[9rem]"
               aria-label={f.label}
@@ -131,8 +136,13 @@ export function FiltersBar({
         <div className="grid grid-cols-2 gap-2 sm:hidden">
           {filters.map((f) => (
             <Select
-              key={f.key}
-              value={params.get(f.key) ?? ''}
+              // `defaultValue` لا `value` عمدًا: القائمة المتحكَّم بها تجعل
+              // الخادم يكتب `selected` على الخيار المطابق بينما لا يكتبه
+              // العميل، فيعتبره React عدم تطابق ترطيب ويعيد بناء الشجرة —
+              // خطأ ظهر فعلًا في console. الـ`key` يعيد التركيب عند تغيّر
+              // الرابط فتبقى القيمة المعروضة مطابقة للفلتر الفعلي.
+              key={`${f.key}:${params.get(f.key) ?? ''}`}
+              defaultValue={params.get(f.key) ?? ''}
               onChange={(e) => update({ [f.key]: e.target.value })}
               aria-label={f.label}
             >

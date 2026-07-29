@@ -17,15 +17,13 @@ env:
   # أسرار وهمية للـ CI فقط — الأسرار الحقيقية لا تُوضع في المستودع إطلاقًا.
   SESSION_SECRET: ci-only-session-secret-not-used-in-any-real-environment
   FILE_SIGNING_SECRET: ci-only-file-secret-not-used-in-any-real-environment
-  # لا نحتاج تنزيل متصفحات Playwright — توليد PDF غير مشمول في هذه الوظيفة.
-  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
   NEXT_TELEMETRY_DISABLED: '1'
 
 jobs:
   verify:
-    name: فحص الأنواع والبناء والاختبارات
+    name: فحص الأنواع والبناء والاختبارات واختبارات المتصفح
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -68,6 +66,14 @@ jobs:
 
       - name: تشغيل الاختبارات
         run: npm test
+
+      # Chromium لازم لاختبارات المتصفح ولتوليد PDF فعلي. نثبّته عبر
+      # playwright-core الموجود أصلًا في التبعيات — بلا حزمة إضافية.
+      - name: تثبيت Chromium
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+
+      - name: اختبارات المتصفح (E2E)
+        run: npm run test:e2e
 
       - name: التحقق من عدم تسرّب أسرار حقيقية
         run: |

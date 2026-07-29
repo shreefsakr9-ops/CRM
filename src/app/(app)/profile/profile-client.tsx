@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Save, KeyRound, LogOut, Monitor, ShieldCheck, ShieldOff, Copy, RefreshCw } from 'lucide-react';
 import { Badge, Button, Card, CardBody, CardHeader, Field, Input, Select } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
-import { formatDate, formatRelative } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { RelativeTime } from '@/components/relative-time';
 import { cn } from '@/lib/utils';
 import {
   updateProfileAction,
@@ -169,7 +170,9 @@ export function ProfileClient({
                     <p className="truncate text-[10px] text-ink-faint" dir="ltr">
                       {s.userAgent?.slice(0, 70) ?? '—'}
                     </p>
-                    <p className="text-[10px] text-ink-faint">آخر نشاط {formatRelative(s.lastSeenAt)}</p>
+                    <p className="text-[10px] text-ink-faint">
+                      آخر نشاط <RelativeTime value={s.lastSeenAt} />
+                    </p>
                   </div>
                   {s.id !== currentSessionId && (
                     <Button

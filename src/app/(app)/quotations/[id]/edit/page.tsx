@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { requirePermission } from '@/server/auth/guard';
+import { findOr404 } from '@/server/auth/page-guard';
 import { getQuotation, quotationFormOptions } from '@/server/services/quotations';
 import { PageHeader } from '@/components/page-header';
 import { QuotationBuilder } from '../../quotation-builder';
@@ -11,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export default async function EditQuotationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   await requirePermission('quotations', 'edit');
-  const [quotation, options] = await Promise.all([getQuotation(id), quotationFormOptions()]);
+  const [quotation, options] = await Promise.all([findOr404(() => getQuotation(id)), quotationFormOptions()]);
 
   const initial = {
     id: quotation.id,

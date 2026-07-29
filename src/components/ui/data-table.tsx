@@ -287,25 +287,40 @@ export function DataTable<T>({
               const href = rowHref?.(row);
               const primary = visible.find((c) => c.primary) ?? visible[0];
               const rest = visible.filter((c) => c.key !== primary?.key);
-              const content = (
-                <div className="px-4 py-3">
-                  <div className="mb-2 text-sm font-medium text-ink">{primary?.render(row)}</div>
-                  <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                    {rest.map((c) => (
-                      <div key={c.key} className="min-w-0">
-                        <dt className="text-[10px] uppercase tracking-wide text-ink-faint">{c.header}</dt>
-                        <dd className="truncate text-xs text-ink-muted">{c.render(row)}</dd>
-                      </div>
-                    ))}
-                  </dl>
+              // رابط مُغطٍّ بدل تغليف البطاقة كلها بـ<a>.
+              //
+              // السبب ليس تجميليًا: خلايا الصفوف تحوي روابطها الخاصة (هاتف،
+              // واتساب، بريد)، وتغليفها برابط خارجي ينتج <a> داخل <a> وهو
+              // غير صالح في HTML. متصفّح المستخدم يعيد ترتيب الوسوم عند
+              // التحليل فيختلف الناتج عمّا بناه React، فيفشل الترطيب ويعيد
+              // React بناء الجدول كاملًا في المتصفح (خطأ ظهر في console على
+              // صفحة العملاء المحتملين). هنا يبقى الرابط الخارجي عنصرًا
+              // شقيقًا يغطي البطاقة، والروابط الداخلية فوقه وتظل قابلة للنقر.
+              return (
+                <div key={key} className="relative">
+                  {href && (
+                    <Link
+                      href={href}
+                      className="absolute inset-0 z-0 active:bg-navy-800/60"
+                      aria-label={typeof row === 'object' && primary ? primary.header : undefined}
+                    />
+                  )}
+                  <div className="pointer-events-none relative z-10 px-4 py-3">
+                    <div className="mb-2 text-sm font-medium text-ink">{primary?.render(row)}</div>
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                      {rest.map((c) => (
+                        <div key={c.key} className="min-w-0">
+                          <dt className="text-[10px] uppercase tracking-wide text-ink-faint">
+                            {c.header}
+                          </dt>
+                          <dd className="truncate text-xs text-ink-muted [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
+                            {c.render(row)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
                 </div>
-              );
-              return href ? (
-                <Link key={key} href={href} className="block active:bg-navy-800/60">
-                  {content}
-                </Link>
-              ) : (
-                <div key={key}>{content}</div>
               );
             })}
           </div>
