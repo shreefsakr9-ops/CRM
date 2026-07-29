@@ -23,6 +23,13 @@ export interface MailInput {
   /** نسخة نصية — تُشتق تلقائيًا من HTML إن لم تُمرَّر */
   text?: string;
   replyTo?: string;
+  attachments?: MailAttachment[];
+}
+
+export interface MailAttachment {
+  filename: string;
+  content: Buffer;
+  contentType: string;
 }
 
 interface SmtpConfig {
@@ -136,6 +143,7 @@ export async function sendMail(input: MailInput): Promise<SendResult> {
       html: input.html,
       text: input.text ?? htmlToText(input.html),
       replyTo: input.replyTo,
+      attachments: input.attachments,
     });
     return { status: 'sent', messageId: info.messageId };
   } catch (error) {
@@ -198,9 +206,22 @@ export async function renderEmail(params: {
   blocks?: EmailBlock[];
   action?: EmailAction;
   footnote?: string;
+  /**
+   * الجمهور يحدّد التذييل. الرسالة الداخلية تشير إلى تفضيلات الإشعارات وتطلب
+   * عدم الرد؛ أما رسالة العميل فتحمل بيانات التواصل — لأن العميل يحتاج الرد فعلًا
+   * على فاتورة أو عرض سعر. الافتراضي داخلي.
+   */
+  audience?: 'internal' | 'client';
 }): Promise<string> {
   const settings = await getSettings();
   const company = settings.company.nameAr || 'Blue Point';
+  const contactLine = [settings.company.email, settings.company.phone].filter(Boolean).join(' · ');
+  const footerText =
+    params.audience === 'client'
+      ? contactLine
+        ? `${company} — للتواصل: ${contactLine}`
+        : company
+      : 'هذه رسالة آلية من نظام Blue Point OS الداخلي — لا تردّ عليها. يمكنك ضبط تفضيلات الإشعارات من صفحة الإشعارات داخل النظام.';
   const navy = '#0B1A2F';
   const blue = '#2C7BE5';
   const cyan = '#3FC8F5';
@@ -277,10 +298,7 @@ export async function renderEmail(params: {
 
           <tr>
             <td style="background:#F8FAFD;border-top:1px solid ${line};padding:14px 24px;">
-              <p style="margin:0;font-size:11px;color:${muted};">
-                هذه رسالة آلية من نظام Blue Point OS الداخلي — لا تردّ عليها.
-                يمكنك ضبط تفضيلات الإشعارات من صفحة الإشعارات داخل النظام.
-              </p>
+              <p style="margin:0;font-size:11px;color:${muted};">${esc(footerText)}</p>
             </td>
           </tr>
         </table>

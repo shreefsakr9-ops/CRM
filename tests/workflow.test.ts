@@ -16,6 +16,7 @@ const contracts = await import('@/server/services/contracts');
 const projects = await import('@/server/services/projects');
 const tasks = await import('@/server/services/tasks');
 const invoices = await import('@/server/services/invoices');
+const invoiceSend = await import('@/server/services/invoice-send');
 const reports = await import('@/server/services/reports');
 
 const CEO = 'wf.ceo@bluepoint.local';
@@ -477,7 +478,7 @@ describe('١١. الفاتورة والدفع', () => {
 
   it('الدفع الجزئي يحوّل الحالة إلى «مدفوعة جزئيًا»', async () => {
     await actAs(FINANCE);
-    await invoices.sendInvoice(state.invoiceId);
+    await invoiceSend.sendInvoiceToClient(state.invoiceId, { email: false });
     await invoices.recordPayment({
       invoiceId: state.invoiceId,
       clientId: state.clientId,

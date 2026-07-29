@@ -2,13 +2,18 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Wallet, Ban } from 'lucide-react';
+import { Send, Wallet, Ban, Mail, MailX } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
 import { Button, Field, Input, Select, Textarea } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import { formatMoney } from '@/lib/format';
 import { options as labelOptions } from '@/i18n/labels';
-import { sendInvoiceAction, cancelInvoiceAction, recordPaymentAction } from '../actions';
+import {
+  sendInvoiceAction,
+  cancelInvoiceAction,
+  recordPaymentAction,
+  invoiceRecipientAction,
+} from '../actions';
 
 export function InvoiceActions({
   invoice,
@@ -26,8 +31,12 @@ export function InvoiceActions({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [drawer, setDrawer] = React.useState<'pay' | 'cancel' | null>(null);
+  const [drawer, setDrawer] = React.useState<'pay' | 'cancel' | 'send' | null>(null);
   const [pending, setPending] = React.useState(false);
+  const [recipient, setRecipient] = React.useState<{
+    mailEnabled: boolean;
+    recipient: { name: string; email: string } | null;
+  } | null>(null);
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
     setPending(true);
@@ -39,15 +48,29 @@ export function InvoiceActions({
     router.refresh();
   };
 
+  // نعرض المستلم الفعلي قبل الإرسال — لا نرسل بريدًا لجهة لم يرها المستخدم.
+  const openSend = async () => {
+    setDrawer('send');
+    setRecipient(null);
+    const res = await invoiceRecipientAction(invoice.id);
+    if (res.ok && res.data) setRecipient(res.data);
+    else if (!res.ok) toast.error(res.error);
+  };
+
+  const send = async (email: boolean) => {
+    setPending(true);
+    const res = await sendInvoiceAction(invoice.id, { email });
+    setPending(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(res.data?.detail ?? 'تم');
+    setDrawer(null);
+    router.refresh();
+  };
+
   return (
     <div className="flex flex-wrap gap-2">
       {perms.canEdit && invoice.status === 'DRAFT' && (
-        <Button
-          size="sm"
-          loading={pending}
-          type="button"
-          onClick={() => void run(() => sendInvoiceAction(invoice.id), 'تم إرسال الفاتورة')}
-        >
+        <Button size="sm" type="button" onClick={() => void openSend()}>
           <Send className="h-3.5 w-3.5" />
           إرسال
         </Button>
@@ -64,6 +87,62 @@ export function InvoiceActions({
           إلغاء
         </Button>
       )}
+
+      <Drawer
+        open={drawer === 'send'}
+        onClose={() => setDrawer(null)}
+        title={`إرسال الفاتورة ${invoice.number}`}
+        description="الحالة تتغير إلى «مُرسلة» بعد نجاح الإرسال فقط."
+        width="sm"
+      >
+        {recipient === null ? (
+          <p className="text-xs text-ink-faint">جارٍ تحديد جهة الاتصال…</p>
+        ) : (
+          <div className="space-y-4">
+            {!recipient.mailEnabled && (
+              <p className="rounded-md border border-warn/25 bg-warn/10 p-3 text-xs leading-6 text-ink-muted">
+                خادم البريد غير مضبوط، لذلك لا يمكن الإرسال آليًا. يمكنك تنزيل الـPDF وإرساله بنفسك
+                ثم تعليم الفاتورة كمُرسلة.
+              </p>
+            )}
+            {recipient.mailEnabled && !recipient.recipient && (
+              <p className="rounded-md border border-warn/25 bg-warn/10 p-3 text-xs leading-6 text-ink-muted">
+                لا توجد جهة اتصال لها بريد إلكتروني عند هذا العميل. أضف جهة اتصال من نوع «مالية»
+                لتصلها الفواتير تلقائيًا.
+              </p>
+            )}
+            {recipient.mailEnabled && recipient.recipient && (
+              <div className="rounded-md border border-line bg-surface-sunken/60 p-3">
+                <p className="text-[11px] text-ink-faint">سيصل البريد مع مرفق PDF إلى</p>
+                <p className="mt-0.5 text-sm text-ink">{recipient.recipient.name}</p>
+                <p className="num text-xs text-ink-muted" dir="ltr">
+                  {recipient.recipient.email}
+                </p>
+              </div>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                loading={pending}
+                disabled={pending}
+                onClick={() => void send(false)}
+              >
+                <MailX className="h-3.5 w-3.5" />
+                تعليم كمُرسلة فقط
+              </Button>
+              {recipient.mailEnabled && recipient.recipient && (
+                <Button size="sm" type="button" loading={pending} disabled={pending} onClick={() => void send(true)}>
+                  <Mail className="h-3.5 w-3.5" />
+                  إرسال بالبريد
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </Drawer>
 
       <Drawer
         open={drawer === 'pay'}

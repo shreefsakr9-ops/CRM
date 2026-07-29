@@ -306,26 +306,6 @@ export async function updateInvoice(id: string, input: InvoiceInput) {
   return updated;
 }
 
-export async function sendInvoice(id: string) {
-  const user = await requirePermission('invoices', 'edit');
-  const invoice = await prisma.invoice.findUnique({ where: { id } });
-  if (!invoice) throw NotFound('الفاتورة غير موجودة');
-  if (invoice.status !== 'DRAFT') throw BadRequest('الفاتورة مُرسلة بالفعل');
-
-  await prisma.invoice.update({
-    where: { id },
-    data: { status: 'SENT', sentAt: new Date() },
-  });
-  await audit({
-    userId: user.id,
-    action: 'STATUS_CHANGE',
-    module: 'invoices',
-    entityType: 'INVOICE',
-    entityId: id,
-    summary: `إرسال الفاتورة ${invoice.number}`,
-  });
-}
-
 export async function cancelInvoice(id: string, reason: string) {
   const user = await requirePermission('invoices', 'edit');
   if (!reason?.trim()) throw BadRequest('سبب الإلغاء مطلوب');

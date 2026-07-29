@@ -5,7 +5,6 @@ import { ZodError } from 'zod';
 import {
   createInvoice,
   updateInvoice,
-  sendInvoice,
   cancelInvoice,
   invoiceFromQuotation,
   recordPayment,
@@ -16,6 +15,7 @@ import {
   paymentSchema,
   expenseSchema,
 } from '@/server/services/invoices';
+import { sendInvoiceToClient, previewInvoiceRecipient } from '@/server/services/invoice-send';
 import { AppError } from '@/server/auth/guard';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -55,12 +55,27 @@ export async function invoiceFromQuotationAction(quotationId: string): Promise<R
   });
 }
 
-export async function sendInvoiceAction(id: string): Promise<Result> {
+/** يُستخدم لعرض المستلم في نافذة التأكيد قبل الإرسال. */
+export async function invoiceRecipientAction(
+  id: string,
+): Promise<Result<{ mailEnabled: boolean; recipient: { name: string; email: string } | null }>> {
+  return guard(() => previewInvoiceRecipient(id));
+}
+
+export async function sendInvoiceAction(
+  id: string,
+  options: { email: boolean } = { email: true },
+): Promise<Result<{ detail: string }>> {
   return guard(async () => {
-    await sendInvoice(id);
+    const outcome = await sendInvoiceToClient(id, options);
     revalidatePath(`/invoices/${id}`);
     revalidatePath('/invoices');
-    return undefined;
+    return {
+      detail:
+        outcome.status === 'sent'
+          ? `أُرسلت الفاتورة إلى ${outcome.to}`
+          : `عُلِّمت كمُرسلة — ${outcome.reason}`,
+    };
   });
 }
 

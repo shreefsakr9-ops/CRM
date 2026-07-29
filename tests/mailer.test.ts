@@ -170,6 +170,18 @@ describe('قالب الرسائل', () => {
     expect(html).toContain('&lt;b&gt;عميل&lt;/b&gt; &amp; شركاه');
   });
 
+  it('رسالة الفريق تشير إلى تفضيلات الإشعارات وتطلب عدم الرد', async () => {
+    const html = await renderEmail({ heading: 'تنبيه داخلي' });
+    expect(html).toContain('لا تردّ عليها');
+    expect(html).toContain('تفضيلات الإشعارات');
+  });
+
+  it('رسالة العميل لا تطلب منه عدم الرد ولا تشير إلى إعدادات داخلية', async () => {
+    const html = await renderEmail({ heading: 'فاتورة', audience: 'client' });
+    expect(html).not.toContain('لا تردّ عليها');
+    expect(html).not.toContain('تفضيلات الإشعارات');
+  });
+
   it('يعرض الرابط نصًا أيضًا لمن لا يستطيع الضغط على الزر', async () => {
     const url = 'https://os.bluepoint.eg/invoices/9';
     const html = await renderEmail({ heading: 'فاتورة', action: { label: 'فتح', url } });
