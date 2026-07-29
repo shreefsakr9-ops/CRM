@@ -12,6 +12,7 @@ mockSession();
 const leads = await import('@/server/services/leads');
 const deals = await import('@/server/services/deals');
 const quotations = await import('@/server/services/quotations');
+const quotationSend = await import('@/server/services/quotation-send');
 const contracts = await import('@/server/services/contracts');
 const projects = await import('@/server/services/projects');
 const tasks = await import('@/server/services/tasks');
@@ -215,7 +216,9 @@ describe('٤. عرض السعر', () => {
 describe('٥. الاعتماد الداخلي والإرسال', () => {
   it('لا يمكن الإرسال قبل الاعتماد الداخلي', async () => {
     await actAs(SALES);
-    await expect(quotations.markSent(state.quotationId)).rejects.toMatchObject({ status: 400 });
+    await expect(
+      quotationSend.sendQuotationToClient(state.quotationId, { email: false }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('لا يمكن للمُعِد اعتماد عرضه بنفسه', async () => {
@@ -235,7 +238,7 @@ describe('٥. الاعتماد الداخلي والإرسال', () => {
     expect(approved.approvedById).toBeTruthy();
 
     await actAs(SALES);
-    await quotations.markSent(state.quotationId);
+    await quotationSend.sendQuotationToClient(state.quotationId, { email: false });
     const sent = await prisma.quotation.findUniqueOrThrow({ where: { id: state.quotationId } });
     expect(sent.status).toBe('SENT');
     expect(sent.sentAt).not.toBeNull();

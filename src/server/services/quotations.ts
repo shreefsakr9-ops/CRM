@@ -533,43 +533,6 @@ export async function approveQuotation(id: string, approve: boolean, comment?: s
   });
 }
 
-export async function markSent(id: string) {
-  const user = await requirePermission('quotations', 'edit');
-  const settings = await getSettings();
-  const q = await prisma.quotation.findFirst({
-    where: { id, deletedAt: null, ...scopeWhere(user, 'quotations', OWNER_FIELDS) },
-  });
-  if (!q) throw NotFound('عرض السعر غير موجود');
-
-  if (settings.quotation.requireInternalApproval && q.status !== 'APPROVED_INTERNALLY') {
-    throw BadRequest('لا يمكن الإرسال قبل الاعتماد الداخلي (الإعداد مفعّل في إعدادات النظام)');
-  }
-
-  await prisma.quotation.update({
-    where: { id },
-    data: { status: 'SENT', sentAt: new Date() },
-  });
-  if (q.leadId) {
-    await prisma.activity.create({
-      data: {
-        entityType: 'LEAD',
-        entityId: q.leadId,
-        type: 'QUOTATION',
-        subject: `تم إرسال عرض السعر ${q.number}`,
-        userId: user.id,
-      },
-    });
-  }
-  await audit({
-    userId: user.id,
-    action: 'STATUS_CHANGE',
-    module: 'quotations',
-    entityType: 'QUOTATION',
-    entityId: id,
-    summary: `إرسال عرض السعر ${q.number} للعميل`,
-  });
-}
-
 /**
  * قبول العميل: يقفل العرض، يحوّل الصفقة إلى Won، وينشئ العميل إن لم يكن موجودًا.
  */

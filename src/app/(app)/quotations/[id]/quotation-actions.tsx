@@ -2,14 +2,15 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
+import { Send, CheckCircle2, XCircle, ShieldCheck, Mail, MailX } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
-import { Button, Field, Textarea } from '@/components/ui/primitives';
+import { Button, Field, Select, Textarea } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import {
   submitApprovalAction,
   approveQuotationAction,
   markSentAction,
+  quotationRecipientAction,
   clientDecisionAction,
 } from '../actions';
 
@@ -35,8 +36,15 @@ export function QuotationActions({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [drawer, setDrawer] = React.useState<'approve' | 'reject' | 'decision' | null>(null);
+  const [drawer, setDrawer] = React.useState<'approve' | 'reject' | 'decision' | 'send' | null>(
+    null,
+  );
   const [pending, setPending] = React.useState(false);
+  const [recipient, setRecipient] = React.useState<{
+    mailEnabled: boolean;
+    recipient: { name: string; email: string; source: 'contact' | 'lead' } | null;
+    defaultLang: 'ar' | 'en';
+  } | null>(null);
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
     setPending(true);
@@ -44,6 +52,25 @@ export function QuotationActions({
     setPending(false);
     if (!res.ok) return toast.error(res.error ?? 'حدث خطأ');
     toast.success(msg);
+    setDrawer(null);
+    router.refresh();
+  };
+
+  // نعرض المستلم الفعلي قبل الإرسال — لا يُرسل بريد لجهة لم يرها المستخدم.
+  const openSend = async () => {
+    setDrawer('send');
+    setRecipient(null);
+    const res = await quotationRecipientAction(id);
+    if (res.ok && res.data) setRecipient(res.data);
+    else if (!res.ok) toast.error(res.error);
+  };
+
+  const send = async (email: boolean, lang: 'ar' | 'en') => {
+    setPending(true);
+    const res = await markSentAction(id, { email, lang });
+    setPending(false);
+    if (!res.ok) return toast.error(res.error);
+    toast.success(res.data?.detail ?? 'تم');
     setDrawer(null);
     router.refresh();
   };
@@ -78,15 +105,9 @@ export function QuotationActions({
           </>
         )}
         {canSend && (
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => void run(() => markSentAction(id), 'تم تعليم العرض كمُرسل')}
-            loading={pending}
-            type="button"
-          >
+          <Button size="sm" variant="secondary" onClick={() => void openSend()} type="button">
             <Send className="h-3.5 w-3.5" />
-            تعليم كمُرسل
+            إرسال للعميل
           </Button>
         )}
         {canClientDecide && (
@@ -111,6 +132,98 @@ export function QuotationActions({
           </>
         )}
       </div>
+
+      <Drawer
+        open={drawer === 'send'}
+        onClose={() => setDrawer(null)}
+        title="إرسال عرض السعر"
+        description="الحالة تتغير إلى «مُرسل» بعد نجاح الإرسال فقط."
+        width="sm"
+      >
+        {recipient === null ? (
+          <p className="text-xs text-ink-faint">جارٍ تحديد المستلم…</p>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const intent = String(fd.get('intent') ?? 'email');
+              void send(intent === 'email', (fd.get('lang') as 'ar' | 'en') ?? 'ar');
+            }}
+            className="space-y-4"
+          >
+            {!recipient.mailEnabled && (
+              <p className="rounded-md border border-warn/25 bg-warn/10 p-3 text-xs leading-6 text-ink-muted">
+                خادم البريد غير مضبوط، لذلك لا يمكن الإرسال آليًا. نزّل الـPDF وأرسله بنفسك ثم علّم
+                العرض كمُرسل.
+              </p>
+            )}
+            {recipient.mailEnabled && !recipient.recipient && (
+              <p className="rounded-md border border-warn/25 bg-warn/10 p-3 text-xs leading-6 text-ink-muted">
+                لا يوجد بريد إلكتروني لجهة الاتصال ولا للعميل المحتمل. أضف البريد أولًا ليصله العرض
+                تلقائيًا.
+              </p>
+            )}
+            {recipient.mailEnabled && recipient.recipient && (
+              <>
+                <div className="rounded-md border border-line bg-surface-sunken/60 p-3">
+                  <p className="text-[11px] text-ink-faint">
+                    سيصل البريد مع مرفق PDF إلى
+                    {recipient.recipient.source === 'lead' ? ' (بريد العميل المحتمل)' : ''}
+                  </p>
+                  <p className="mt-0.5 text-sm text-ink">{recipient.recipient.name}</p>
+                  <p className="num text-xs text-ink-muted" dir="ltr">
+                    {recipient.recipient.email}
+                  </p>
+                </div>
+                <Field label="لغة المستند">
+                  <Select
+                    name="lang"
+                    defaultValue={recipient.defaultLang}
+                    options={[
+                      { value: 'ar', label: 'العربية' },
+                      { value: 'en', label: 'English' },
+                    ]}
+                  />
+                </Field>
+              </>
+            )}
+
+            <input type="hidden" name="intent" value="email" />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="submit"
+                size="sm"
+                variant="secondary"
+                loading={pending}
+                disabled={pending}
+                onClick={(e) => {
+                  const form = e.currentTarget.form;
+                  if (form) (form.elements.namedItem('intent') as HTMLInputElement).value = 'manual';
+                }}
+              >
+                <MailX className="h-3.5 w-3.5" />
+                تعليم كمُرسل فقط
+              </Button>
+              {recipient.mailEnabled && recipient.recipient && (
+                <Button
+                  type="submit"
+                  size="sm"
+                  loading={pending}
+                  disabled={pending}
+                  onClick={(e) => {
+                    const form = e.currentTarget.form;
+                    if (form) (form.elements.namedItem('intent') as HTMLInputElement).value = 'email';
+                  }}
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  إرسال بالبريد
+                </Button>
+              )}
+            </div>
+          </form>
+        )}
+      </Drawer>
 
       <Drawer
         open={drawer === 'approve' || drawer === 'reject'}

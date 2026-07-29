@@ -26,6 +26,9 @@ export type InvoiceSendOutcome =
 async function resolveRecipient(clientId: string) {
   const contacts = await prisma.contact.findMany({
     where: { clientId, deletedAt: null, email: { not: null } },
+    // ترتيب حتمي: بدونه قد تعيد المعاينة جهة والإرسال جهة أخرى عند تعدد
+    // جهات الاتصال من نفس النوع، لأن Postgres لا يضمن ترتيب الصفوف.
+    orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
     select: { name: true, email: true, type: true, isPrimary: true },
   });
   const withEmail = contacts.filter((c) => c.email?.includes('@'));

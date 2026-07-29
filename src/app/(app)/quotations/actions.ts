@@ -7,11 +7,14 @@ import {
   updateQuotation,
   submitForApproval,
   approveQuotation,
-  markSent,
   decideByClient,
   softDeleteQuotation,
   quotationSchema,
 } from '@/server/services/quotations';
+import {
+  sendQuotationToClient,
+  previewQuotationRecipient,
+} from '@/server/services/quotation-send';
 import { AppError } from '@/server/auth/guard';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -64,11 +67,34 @@ export async function approveQuotationAction(
   });
 }
 
-export async function markSentAction(id: string): Promise<Result> {
+/** يُستخدم لعرض المستلم في نافذة التأكيد قبل الإرسال. */
+export async function quotationRecipientAction(id: string): Promise<
+  Result<{
+    mailEnabled: boolean;
+    recipient: { name: string; email: string; source: 'contact' | 'lead' } | null;
+    defaultLang: 'ar' | 'en';
+  }>
+> {
   return guard(async () => {
-    await markSent(id);
+    const { mailEnabled, recipient, defaultLang } = await previewQuotationRecipient(id);
+    return { mailEnabled, recipient, defaultLang };
+  });
+}
+
+export async function markSentAction(
+  id: string,
+  options: { email: boolean; lang?: 'ar' | 'en' } = { email: true },
+): Promise<Result<{ detail: string }>> {
+  return guard(async () => {
+    const outcome = await sendQuotationToClient(id, options);
     revalidatePath(`/quotations/${id}`);
-    return undefined;
+    revalidatePath('/quotations');
+    return {
+      detail:
+        outcome.status === 'sent'
+          ? `أُرسل عرض السعر إلى ${outcome.to}`
+          : `عُلِّم كمُرسل — ${outcome.reason}`,
+    };
   });
 }
 
