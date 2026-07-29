@@ -26,7 +26,7 @@
                                   │               │
               ┌───────────────────▼──┐   ┌────────▼─────────────┐
               │  PostgreSQL 16       │   │  File Storage        │
-              │  (RLS enabled,       │   │  (local volume /     │
+              │  (append-only audit, │   │  (local volume /     │
               │   not public-facing) │   │   S3-compatible)     │
               └───────────▲──────────┘   └──────────────────────┘
                           │
@@ -57,7 +57,7 @@
 | Styling | Tailwind CSS 3.4 + CSS Variables (Design Tokens) | RTL عبر Logical Properties، Dark navy theme، حجم CSS صغير. |
 | Validation | Zod 4 | Schema واحد للـ Client والـ Server. |
 | DB | PostgreSQL 16 | مطلوب صراحة، يدعم RLS و JSONB و Full-text search. |
-| ORM | Prisma 6 | Migrations منظمة، Type-safety، يعمل مع RLS عبر `SET LOCAL`. |
+| ORM | Prisma 6 | Migrations منظمة، Type-safety، وحذف الأسرار افتراضيًا على مستوى العميل. |
 | Auth | جلسات داخل قاعدة البيانات + Cookie httpOnly + scrypt | انظر ADR-001. |
 | PDF | Chromium (playwright-core) → HTML → PDF | الطريقة الوحيدة الموثوقة لتشكيل العربية وRTL وخط Cairo. انظر ADR-003. |
 | Charts | مكوّنات SVG داخلية خفيفة | لا تبعية ثقيلة، تحكم كامل في RTL والألوان. |
@@ -74,7 +74,7 @@ Supabase Self-Hosted حزمة ممتازة لكنها تضيف ~10 حاويات 
 | --- | --- |
 | Auth (GoTrue) | جلسات مخزنة في PostgreSQL، `scrypt` (Node crypto، بدون تبعيات native)، cookies موقّعة httpOnly + SameSite=Lax، انتهاء صلاحية، إبطال الجلسات، 2FA (TOTP) اختياري. |
 | PostgreSQL | نفسه — PostgreSQL 16. |
-| Row-Level Security | مفعّل فعليًا: التطبيق يتصل بدور `bluepoint_app` (غير BYPASSRLS) ويضبط `app.user_id` / `app.perms` عبر `SET LOCAL` داخل كل transaction. |
+| Row-Level Security | **غير مفعّل** — الحماية كلها في طبقة الخدمة (النطاق مطبَّق داخل استعلامات Prisma). السبب والخطة في `docs/09-known-limitations.md`. المفروض من قاعدة البيانات حاليًا: **سجل تدقيق للإضافة فقط** عبر مشغّلات، و**حذف الأسرار افتراضيًا** من عميل Prisma. |
 | Storage | تخزين على volume مع Signed URLs (HMAC) + التحقق من الصلاحية عند كل تحميل. متوافق مع الانتقال لـ S3/Object Storage لاحقًا. |
 | Realtime | Server-Sent Events لمركز الإشعارات (اتصال واحد خفيف، يعمل خلف Caddy، لا يحتاج WebSocket sticky sessions). |
 
@@ -116,7 +116,7 @@ src/
     services/      leads, deals, clients, quotations, contracts,
                    projects, tasks, invoices, payments, reports,
                    notifications, audit, files, settings, numbering, money
-    db.ts          Prisma client + RLS context helper
+    db.ts          Prisma client (يحذف الأسرار افتراضيًا)
   worker/          scheduled jobs
   i18n/            ar.ts, en.ts
   lib/             shared utils (formatting, csv, dates)

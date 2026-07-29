@@ -109,18 +109,25 @@ erDiagram
 - `AuditLog`: `(entityType, entityId)`, `(userId, at)`.
 - `Notification`: `(userId, readAt)`, unique على `dedupeKey`.
 
-## 5. سياسات RLS
+## 5. الحماية على مستوى قاعدة البيانات
 
-مفعّلة على: `Lead, Deal, Client, Quotation, Contract, Project, Task, Invoice, Payment, Expense, FileObject, AuditLog`.
+### المفروض فعليًا اليوم
 
-آلية العمل:
+| القيد | الآلية |
+| --- | --- |
+| `audit_logs` للإضافة فقط | مشغّلات `BEFORE UPDATE / DELETE / TRUNCATE` ترفع استثناء. تعمل حتى على مالك الجداول، بخلاف سياسات RLS التي يتجاوزها المالك افتراضيًا. |
+| الأسرار لا تخرج من طبقة البيانات | عميل Prisma مضبوط على حذف `passwordHash`، `twoFactorSecret`، `tokenHash`، `codeHash` من كل استعلام. |
+| سلامة العلاقات | مفاتيح أجنبية + `onDelete` صريح، وفريدات على أرقام المستندات و`dedupeKey`. |
 
-```sql
--- التطبيق يتصل بدور bluepoint_app (NOBYPASSRLS)
-SET LOCAL app.user_id   = '<cuid>';
-SET LOCAL app.scope_all = 'on|off';   -- من صلاحية Scope=ALL
-SET LOCAL app.team_ids  = '<id1,id2>';
-```
+### Row-Level Security — غير مفعّلة
 
-كل سياسة تسمح بالصف إذا: `app.scope_all = 'on'` أو المالك/المسند = `app.user_id` أو المالك ضمن `app.team_ids`.
-`AuditLog`: `SELECT` فقط للتطبيق، و`INSERT` مسموح، و`UPDATE/DELETE` ممنوعان (`REVOKE`).
+**لا توجد سياسات RLS ولا جداول مفعَّل عليها RLS.** نطاق البيانات (OWN/TEAM/ALL)
+مفروض بالكامل في طبقة الخدمة داخل استعلامات Prisma نفسها.
+
+سبب التأجيل تقني لا تجاهلي: `SET LOCAL` لا يعمل إلا داخل transaction، بينما
+استعلامات Prisma تعمل على اتصالات مُجمَّعة خارج المعاملات. تفعيل RLS يتطلب إما
+تغليف كل استعلام في transaction (تكلفة أداء وتعقيد)، أو اتصالًا لكل طلب.
+القرار مؤجَّل بوعي مع توثيقه هنا بدل ادعاء طبقة حماية غير موجودة.
+
+عند التفعيل مستقبلًا يلزم: دور `bluepoint_app` **لا يملك الجداول** وغير
+`BYPASSRLS`، وسياسة لكل جدول تقرأ `app.user_id` و`app.team_ids` و`app.scope_all`.

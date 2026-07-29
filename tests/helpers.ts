@@ -121,9 +121,16 @@ export async function createTestUser(params: {
 
 /** ينظّف بيانات الأعمال بين ملفات الاختبار مع إبقاء البيانات المرجعية. */
 export async function resetBusinessData() {
+  // سجل التدقيق محمي بمشغّل يمنع الحذف. تنظيفه بين ملفات الاختبار استثناء
+  // مقصود ومحصور هنا: نعطّل المشغّل داخل نفس المعاملة ثم نعيده فورًا.
+  await prisma.$transaction([
+    prisma.$executeRawUnsafe('ALTER TABLE "audit_logs" DISABLE TRIGGER USER'),
+    prisma.auditLog.deleteMany(),
+    prisma.$executeRawUnsafe('ALTER TABLE "audit_logs" ENABLE TRIGGER USER'),
+  ]);
+
   await prisma.$transaction([
     prisma.notification.deleteMany(),
-    prisma.auditLog.deleteMany(),
     prisma.activity.deleteMany(),
     prisma.commentMention.deleteMany(),
     prisma.comment.deleteMany(),

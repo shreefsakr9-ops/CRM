@@ -326,3 +326,48 @@ describe('تسريب الحقول الحساسة', () => {
     expect(first?.role?.nameAr).toBeTruthy();
   });
 });
+
+describe('سجل التدقيق إضافة فقط (مفروض من قاعدة البيانات)', () => {
+  /**
+   * كان المنع اصطلاحًا: لا يوجد كود يعدّل السجل، لكن لا شيء يمنعه فعلًا.
+   * المشغّل يفرضه حتى على مالك الجداول، فلا يستطيع خطأ برمجي ولا وصول مباشر
+   * لقاعدة البيانات طمس الأثر.
+   */
+  it('يرفض تعديل أي سجل تدقيق', async () => {
+    const log = await appPrisma.auditLog.findFirstOrThrow();
+    await expect(
+      appPrisma.auditLog.update({ where: { id: log.id }, data: { summary: 'محاولة طمس' } }),
+    ).rejects.toThrow(/append-only/);
+  });
+
+  it('يرفض حذف أي سجل تدقيق', async () => {
+    const log = await appPrisma.auditLog.findFirstOrThrow();
+    await expect(appPrisma.auditLog.delete({ where: { id: log.id } })).rejects.toThrow(
+      /append-only/,
+    );
+  });
+
+  it('يرفض الحذف الجماعي', async () => {
+    await expect(appPrisma.auditLog.deleteMany({})).rejects.toThrow(/append-only/);
+  });
+
+  it('يرفض TRUNCATE الذي يتجاوز مشغّلات الصفوف', async () => {
+    await expect(appPrisma.$executeRawUnsafe('TRUNCATE TABLE "audit_logs"')).rejects.toThrow(
+      /append-only/,
+    );
+  });
+
+  it('الإضافة تبقى مسموحة', async () => {
+    const before = await appPrisma.auditLog.count();
+    await appPrisma.auditLog.create({
+      data: {
+        action: 'CREATE',
+        module: 'users',
+        entityType: 'USER',
+        entityId: 'test-append',
+        summary: 'اختبار الإضافة',
+      },
+    });
+    expect(await appPrisma.auditLog.count()).toBe(before + 1);
+  });
+});
