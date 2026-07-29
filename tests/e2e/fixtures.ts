@@ -32,6 +32,8 @@ export interface E2EData {
   invoiceId: string;
   invoiceNumber: string;
   outOfScopeLeadId: string;
+  convertibleLeadId: string;
+  convertibleLeadPhone: string;
 }
 
 async function upsertUser(
@@ -178,10 +180,39 @@ export async function seedE2EData(): Promise<E2EData> {
     update: { assignedToId: admin.id, deletedAt: null },
   });
 
+  // عميل محتمل جاهز للتحويل — غير محوَّل بعد في بداية كل تشغيل، ليختبر مسار
+  // «تحويل إلى عميل» من الواجهة فعليًا لا من الخدمة مباشرة.
+  const convertibleLeadId = 'e2e-convertible-lead';
+  const convertibleLeadPhone = '01099998888';
+  await prisma.client.deleteMany({ where: { legalName: 'مصنع الاختبار للتحويل' } });
+  await prisma.lead.upsert({
+    where: { id: convertibleLeadId },
+    create: {
+      id: convertibleLeadId,
+      fullName: 'مصنع الاختبار للتحويل',
+      phone: convertibleLeadPhone,
+      phoneNormalized: `20${convertibleLeadPhone.slice(1)}`,
+      email: 'e2e.convert@example.com',
+      status: 'QUALIFIED',
+      priority: 'MEDIUM',
+      currency: 'EGP',
+      assignedToId: admin.id,
+      createdById: admin.id,
+    },
+    update: {
+      assignedToId: admin.id,
+      deletedAt: null,
+      convertedClientId: null,
+      convertedAt: null,
+    },
+  });
+
   return {
     clientId: client.id,
     invoiceId: invoice.id,
     invoiceNumber: number,
     outOfScopeLeadId: lead.id,
+    convertibleLeadId,
+    convertibleLeadPhone,
   };
 }

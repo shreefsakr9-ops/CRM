@@ -152,3 +152,34 @@ describe('توليد PDF فعلي', () => {
     expect(body.toString('latin1')).toMatch(/Cairo/);
   }, 120_000);
 });
+
+describe('تحويل العميل المحتمل إلى عميل', () => {
+  it('لا تُعاد كتابة أي بيانات — جهة الاتصال الأساسية تُنشأ من بيانات العميل المحتمل نفسها', async () => {
+    // هذا هو الوعد المحوري للنظام («مترابط بلا إعادة إدخال للبيانات»)، ومُختبر
+    // حتى الآن على مستوى الخدمة فقط (tests/workflow.test.ts). هنا يُنقر الزر
+    // فعليًا في المتصفح دون كتابة الاسم أو الهاتف مرة أخرى، والتحقق يقع على
+    // صفحة العميل الناتجة لا على استجابة الخادم مباشرة.
+    const page = session.page;
+    await page.goto(`/leads/${data.convertibleLeadId}`, { waitUntil: 'load' });
+
+    await page.click('button:has-text("تحويل إلى عميل")');
+    const dialog = page.locator('[role="dialog"]').filter({ hasText: 'تحويل إلى عميل' });
+    await expect.poll(() => dialog.count()).toBeGreaterThan(0);
+
+    // الحقول تُترك فارغة عمدًا — لا اسم قانوني ولا مدير حساب — لنثبت أن
+    // البيانات المنسوخة (الاسم والهاتف) تأتي من العميل المحتمل لا من إدخال يدوي.
+    await dialog.locator('button[type="submit"]:has-text("تحويل")').click();
+
+    // النظام يبقي المستخدم على صفحة العميل المحتمل بعد التحويل (لا توجيه
+    // قسري) ويعرض رابطًا صريحًا لملف العميل الجديد — تأكيد مرئي قبل المتابعة.
+    const clientLink = page.locator('a[href^="/clients/"]', { hasText: 'مصنع الاختبار للتحويل' });
+    await expect.poll(() => clientLink.count(), { timeout: 15_000 }).toBeGreaterThan(0);
+
+    await clientLink.click();
+    await page.waitForURL(/\/clients\/[^/]+$/, { timeout: 20_000 });
+
+    const body = await page.locator('main').innerText();
+    expect(body).toContain('مصنع الاختبار للتحويل');
+    expect(body).toContain(data.convertibleLeadPhone);
+  });
+});
