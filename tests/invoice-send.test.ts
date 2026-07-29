@@ -1,7 +1,20 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { mockSession, actAs, createTestUser, prisma, resetBusinessData } from './helpers';
 
 mockSession();
+
+/**
+ * توليد الـPDF يحتاج Chromium وهو غير متاح في CI، وهذه الاختبارات تخص منطق
+ * الإرسال لا التوليد (يغطيه documents.test.ts). نستبدل المولّد ونتحكم في فشله.
+ */
+const pdf = vi.hoisted(() => ({ shouldFail: false }));
+vi.mock('@/server/services/invoice-pdf', () => ({
+  renderInvoicePdf: async () => {
+    if (pdf.shouldFail) throw new Error('browserType.launch: Executable doesn\'t exist');
+    return Buffer.from('%PDF-1.4 stub');
+  },
+  renderInvoiceHtml: async () => '<html></html>',
+}));
 
 const { sendInvoiceToClient, previewInvoiceRecipient } = await import(
   '@/server/services/invoice-send'
@@ -42,15 +55,20 @@ beforeAll(async () => {
   state.clientId = client.id;
 });
 
+/** الاختبارات تشترك في عملية واحدة، فأي تعديل على البيئة يجب أن يُنظَّف بالكامل. */
+function clearSmtpEnv() {
+  delete process.env.SMTP_HOST;
+  delete process.env.SMTP_PORT;
+  pdf.shouldFail = false;
+}
+
 beforeEach(async () => {
+  clearSmtpEnv();
   await actAs(FINANCE);
   state.invoiceId = await newDraftInvoice();
-  delete process.env.SMTP_HOST;
 });
 
-afterEach(() => {
-  delete process.env.SMTP_HOST;
-});
+afterEach(clearSmtpEnv);
 
 describe('اختيار المستلم', () => {
   it('لا يجد مستلمًا عند غياب جهات الاتصال', async () => {
@@ -108,6 +126,18 @@ describe('إرسال الفاتورة', () => {
     const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: state.invoiceId } });
     expect(invoice.status).toBe('DRAFT');
     expect(invoice.sentAt).toBeNull();
+  });
+
+  it('فشل توليد الـPDF يعطي خطأً مفهومًا ويُبقي الفاتورة مسودة', async () => {
+    process.env.SMTP_HOST = 'smtp.example.com';
+    pdf.shouldFail = true;
+
+    await expect(sendInvoiceToClient(state.invoiceId, { email: true })).rejects.toThrow(
+      /تعذّر توليد ملف الفاتورة/,
+    );
+
+    const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: state.invoiceId } });
+    expect(invoice.status).toBe('DRAFT');
   });
 
   it('لا يمكن إرسال فاتورة مُرسلة مرتين', async () => {

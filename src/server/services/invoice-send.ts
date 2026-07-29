@@ -1,6 +1,6 @@
 import 'server-only';
 import { prisma } from '@/server/db';
-import { requirePermission, NotFound, BadRequest } from '@/server/auth/guard';
+import { requirePermission, NotFound, BadRequest, AppError } from '@/server/auth/guard';
 import { renderInvoicePdf } from './invoice-pdf';
 import { sendMail, renderEmail, appUrl, isMailEnabled, maskEmail } from './mailer';
 import { getSettings } from './settings';
@@ -97,7 +97,21 @@ export async function sendInvoiceToClient(
 
   const settings = await getSettings();
   const lang: Lang = options.lang ?? (settings.locale.defaultLocale === 'en' ? 'en' : 'ar');
-  const pdf = await renderInvoicePdf(invoiceId, lang);
+  // توليد الـPDF يعتمد على Chromium وقد يفشل لأسباب تشغيلية (غير مثبّت، ذاكرة).
+  // نحوّله إلى خطأ مفهوم بدل رسالة عامة، وتبقى الفاتورة مسودة.
+  let pdf: Buffer;
+  try {
+    pdf = await renderInvoicePdf(invoiceId, lang);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[invoice-send] تعذّر توليد PDF للفاتورة ${invoice.number}: ${message}`);
+    throw new AppError(
+      'تعذّر توليد ملف الفاتورة — لم تُرسل وبقيت مسودة. راجع سجل الخادم.',
+      500,
+      'PDF_FAILED',
+    );
+  }
+
   const clientName = invoice.client.brandName || invoice.client.legalName;
   const total = formatMoney(invoice.totalMinor, invoice.currency, lang);
   const due = formatDate(invoice.dueDate, lang, settings.locale.timezone);
