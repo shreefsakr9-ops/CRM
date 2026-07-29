@@ -36,6 +36,8 @@ cp .env.example .env
 # عدّل DATABASE_URL وولّد الأسرار:
 #   openssl rand -base64 48   → SESSION_SECRET
 #   openssl rand -base64 48   → FILE_SIGNING_SECRET
+# TEST_DATABASE_URL مطلوب فقط لتشغيل الاختبارات (npm test) — أنشئ قاعدة بيانات
+# منفصلة تمامًا لها؛ الاختبارات تصفّر بياناتها بين التشغيلات.
 
 # 3) قاعدة البيانات + بيانات تجريبية
 npm run db:migrate
