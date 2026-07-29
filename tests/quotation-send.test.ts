@@ -22,7 +22,7 @@ const { createLead } = await import('@/server/services/leads');
 const { AppError } = await import('@/server/auth/guard');
 
 const ADMIN = 'qs.admin@bluepoint.local';
-const state = { clientId: '', serviceId: '' };
+const state = { clientId: '', serviceId: '', otherContactId: '' };
 
 async function newApprovedQuotation(link: { clientId?: string; leadId?: string }) {
   const q = await quotations.createQuotation({
@@ -55,6 +55,36 @@ beforeAll(async () => {
     country: 'EG',
   } as never);
   state.clientId = client.id;
+
+  // جهتا اتصال بأنواع مختلفة: تُستخدمان في اختبار الأولوية وفي الاختيار اليدوي.
+  await upsertContact({
+    clientId: client.id,
+    name: 'موظف استقبال',
+    type: 'MAIN',
+    email: 'reception@example.com',
+    isPrimary: true,
+  } as never);
+  await upsertContact({
+    clientId: client.id,
+    name: 'المدير',
+    type: 'DECISION_MAKER',
+    email: 'boss@example.com',
+  } as never);
+
+  // عميل ثانٍ بجهة اتصال — لاختبار منع الإرسال عبر العملاء.
+  const other = await createClient({
+    legalName: 'عميل آخر لعروض الأسعار',
+    industry: 'OTHER',
+    status: 'ACTIVE',
+    country: 'EG',
+  } as never);
+  const otherContact = await upsertContact({
+    clientId: other.id,
+    name: 'جهة عميل آخر',
+    type: 'DECISION_MAKER',
+    email: 'other-quote@example.com',
+  } as never);
+  state.otherContactId = otherContact.id;
 });
 
 function clearSmtpEnv() {
@@ -89,20 +119,6 @@ describe('اختيار المستلم', () => {
   });
 
   it('يفضّل صاحب القرار على جهة الاتصال الرئيسية', async () => {
-    await upsertContact({
-      clientId: state.clientId,
-      name: 'موظف استقبال',
-      type: 'MAIN',
-      email: 'reception@example.com',
-      isPrimary: true,
-    } as never);
-    await upsertContact({
-      clientId: state.clientId,
-      name: 'المدير',
-      type: 'DECISION_MAKER',
-      email: 'boss@example.com',
-    } as never);
-
     const id = await newApprovedQuotation({ clientId: state.clientId });
     const preview = await previewQuotationRecipient(id);
     expect(preview.recipient?.email).toBe('boss@example.com');
@@ -185,5 +201,84 @@ describe('إرسال عرض السعر', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(activity?.subject).toContain('تعليم');
+  });
+});
+
+describe('اختيار المستلم يدويًا ونسخة CC — عروض الأسعار', () => {
+  it('يعيد قائمة جهات اتصال العميل للاختيار منها', async () => {
+    const id = await newApprovedQuotation({ clientId: state.clientId });
+    const preview = await previewQuotationRecipient(id);
+    expect(preview.options.length).toBeGreaterThan(1);
+    expect(preview.options.every((o) => o.email.includes('@'))).toBe(true);
+  });
+
+  it('عرض سعر لعميل محتمل بلا عميل: لا توجد خيارات ولا يمكن اختيار جهة', async () => {
+    const lead = await createLead({
+      fullName: 'عميل محتمل بلا جهات اتصال',
+      phone: '01099887744',
+      email: 'no-contacts@example.com',
+      estimatedValue: 3000,
+      currency: 'EGP',
+      priority: 'LOW',
+      score: 0,
+      nextFollowUpAt: new Date(Date.now() + 86_400_000).toISOString(),
+    } as never);
+    const id = await newApprovedQuotation({ leadId: lead.id });
+
+    const preview = await previewQuotationRecipient(id);
+    expect(preview.options).toEqual([]);
+    await expect(
+      sendQuotationToClient(id, { email: true, toContactId: state.otherContactId }),
+    ).rejects.toThrow(/مستند بلا عميل/);
+  });
+
+  it('يرفض مستلمًا يخص عميلًا آخر ولا يغيّر الحالة', async () => {
+    // بدون هذا التحقق يُرسل عرض سعر عميل إلى جهة اتصال عميل مختلف.
+    const id = await newApprovedQuotation({ clientId: state.clientId });
+    await expect(
+      sendQuotationToClient(id, { email: true, toContactId: state.otherContactId }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+
+    const q = await prisma.quotation.findUniqueOrThrow({ where: { id } });
+    expect(q.status).toBe('APPROVED_INTERNALLY');
+  });
+
+  it('يرفض نسخة CC تخص عميلًا آخر', async () => {
+    const id = await newApprovedQuotation({ clientId: state.clientId });
+    await expect(
+      sendQuotationToClient(id, { email: true, ccContactIds: [state.otherContactId] }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+  });
+
+  it('يرفض معرّف جهة اتصال غير موجود', async () => {
+    const id = await newApprovedQuotation({ clientId: state.clientId });
+    await expect(
+      sendQuotationToClient(id, { email: true, toContactId: 'does-not-exist' }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+  });
+
+  it('المستلم المختار يدويًا يتجاوز الاختيار التلقائي فعليًا', async () => {
+    // الاختيار التلقائي يذهب لصاحب القرار (boss@)، فنختار موظف الاستقبال بدلًا منه
+    // ونتحقق من العنوان المسجَّل في محاولة الإرسال — لا من الواجهة.
+    const contacts = await prisma.contact.findMany({
+      where: { clientId: state.clientId, deletedAt: null },
+      select: { id: true, email: true },
+    });
+    const reception = contacts.find((c) => c.email === 'reception@example.com');
+    expect(reception).toBeTruthy();
+
+    const id = await newApprovedQuotation({ clientId: state.clientId });
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = '1';
+
+    await expect(
+      sendQuotationToClient(id, { email: true, toContactId: reception!.id }),
+    ).rejects.toBeInstanceOf(AppError);
+
+    const log = await prisma.auditLog.findFirst({
+      where: { entityType: 'QUOTATION', entityId: id, action: 'EXPORT' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(log?.summary).toContain('re*******@example.com');
   });
 });

@@ -25,7 +25,7 @@ const { AppError } = await import('@/server/auth/guard');
 
 const FINANCE = 'send.finance@bluepoint.local';
 const ADMIN = 'send.admin@bluepoint.local';
-const state = { clientId: '', invoiceId: '' };
+const state = { clientId: '', invoiceId: '', otherClientId: '', otherContactId: '' };
 
 /** ينشئ فاتورة مسودة جديدة لكل اختبار — الإرسال عملية تتم مرة واحدة. */
 async function newDraftInvoice() {
@@ -53,6 +53,22 @@ beforeAll(async () => {
     country: 'EG',
   } as never);
   state.clientId = client.id;
+
+  // عميل ثانٍ بجهة اتصال — لاختبار منع الإرسال عبر العملاء.
+  const other = await createClient({
+    legalName: 'عميل آخر',
+    industry: 'OTHER',
+    status: 'ACTIVE',
+    country: 'EG',
+  } as never);
+  state.otherClientId = other.id;
+  const otherContact = await upsertContact({
+    clientId: other.id,
+    name: 'جهة عميل آخر',
+    type: 'FINANCE',
+    email: 'other@example.com',
+  } as never);
+  state.otherContactId = otherContact.id;
 });
 
 /** الاختبارات تشترك في عملية واحدة، فأي تعديل على البيئة يجب أن يُنظَّف بالكامل. */
@@ -156,5 +172,45 @@ describe('إرسال الفاتورة', () => {
     expect(log?.summary).toContain('تعليم');
     // لا يظهر بريد كامل في السجل عند التعليم اليدوي.
     expect(log?.summary).not.toContain('finance@example.com');
+  });
+});
+
+describe('اختيار المستلم يدويًا ونسخة CC', () => {
+  it('يعيد قائمة جهات اتصال العميل للاختيار منها', async () => {
+    const preview = await previewInvoiceRecipient(state.invoiceId);
+    expect(preview.options.length).toBeGreaterThan(0);
+    expect(preview.options.every((o) => o.email.includes('@'))).toBe(true);
+  });
+
+  it('يرفض مستلمًا يخص عميلًا آخر', async () => {
+    // بدون هذا التحقق تُرسل فاتورة عميل إلى جهة اتصال عميل مختلف.
+    await expect(
+      sendInvoiceToClient(state.invoiceId, { email: true, toContactId: state.otherContactId }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+
+    const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: state.invoiceId } });
+    expect(invoice.status).toBe('DRAFT');
+  });
+
+  it('يرفض نسخة CC تخص عميلًا آخر', async () => {
+    await expect(
+      sendInvoiceToClient(state.invoiceId, { email: true, ccContactIds: [state.otherContactId] }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+  });
+
+  it('يرفض معرّف جهة اتصال غير موجود', async () => {
+    await expect(
+      sendInvoiceToClient(state.invoiceId, { email: true, toContactId: 'does-not-exist' }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+  });
+});
+
+describe('تنقية نسخ CC', () => {
+  it('يستبعد المستلم الأساسي من النسخ ويزيل التكرار', async () => {
+    const { dedupeCc } = await import('@/server/services/recipients');
+    expect(dedupeCc('a@x.com', ['a@x.com', 'b@x.com', 'B@x.com', 'c@x.com'])).toEqual([
+      'b@x.com',
+      'c@x.com',
+    ]);
   });
 });

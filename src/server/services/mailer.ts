@@ -17,6 +17,8 @@ export type SendResult =
 
 export interface MailInput {
   to: string;
+  /** نسخة إضافية — تُستخدم لإشراك زميل في مراسلة العميل. */
+  cc?: string[];
   subject: string;
   /** المحتوى الأساسي بصيغة HTML (يُولَّد عادة من renderEmail) */
   html: string;
@@ -139,6 +141,7 @@ export async function sendMail(input: MailInput): Promise<SendResult> {
     const info = await getTransporter(config).sendMail({
       from: config.from,
       to: input.to,
+      cc: input.cc?.length ? input.cc : undefined,
       subject: input.subject,
       html: input.html,
       text: input.text ?? htmlToText(input.html),

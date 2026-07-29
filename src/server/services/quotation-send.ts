@@ -4,6 +4,7 @@ import { requirePermission, NotFound, BadRequest, AppError } from '@/server/auth
 import { renderQuotationPdf } from './quotation-pdf';
 import { sendMail, renderEmail, isMailEnabled, maskEmail } from './mailer';
 import { getSettings } from './settings';
+import { contactOptions, resolveChosenContacts, dedupeCc } from './recipients';
 import { audit } from './audit';
 import { formatMoney, formatDate } from '@/lib/format';
 import type { Lang } from './pdf-layout';
@@ -83,6 +84,9 @@ export async function previewQuotationRecipient(quotationId: string) {
   return {
     mailEnabled: isMailEnabled(),
     recipient: await resolveRecipient(q),
+    // جهات اتصال العميل ليختار المستخدم مستلمًا آخر أو يضيف نسخة. عرض السعر
+    // المرتبط بعميل محتمل فقط لا عميل له، فالقائمة تكون فارغة والاختيار غير متاح.
+    options: await contactOptions(q.clientId),
     defaultLang: settings.locale.defaultLocale === 'en' ? ('en' as Lang) : ('ar' as Lang),
     canSend: user.permissions['quotations.edit'] !== undefined,
   };
@@ -90,7 +94,14 @@ export async function previewQuotationRecipient(quotationId: string) {
 
 export async function sendQuotationToClient(
   quotationId: string,
-  options: { email: boolean; lang?: Lang } = { email: true },
+  options: {
+    email: boolean;
+    lang?: Lang;
+    /** مستلم مختار يدويًا بدل الاختيار التلقائي. */
+    toContactId?: string;
+    /** جهات اتصال تُضاف كنسخة (CC). */
+    ccContactIds?: string[];
+  } = { email: true },
 ): Promise<QuotationSendOutcome> {
   const user = await requirePermission('quotations', 'edit');
   const settings = await getSettings();
@@ -116,6 +127,13 @@ export async function sendQuotationToClient(
     throw BadRequest('لا يمكن الإرسال قبل الاعتماد الداخلي (الإعداد مفعّل في إعدادات النظام)');
   }
   if (q.status === 'SENT') throw BadRequest('عرض السعر مُرسل بالفعل');
+
+  // التحقق من المدخلات قبل أي تغيير حالة: معرّف خاطئ يجب أن يفشل الطلب لا أن
+  // يُتجاهل بصمت ويُعلَّم العرض كمُرسل.
+  const [picked] = options.toContactId
+    ? await resolveChosenContacts(q.clientId, [options.toContactId])
+    : [];
+  const ccContacts = await resolveChosenContacts(q.clientId, options.ccContactIds ?? []);
 
   const markSentInternal = async (summary: string) => {
     await prisma.quotation.update({
@@ -153,7 +171,9 @@ export async function sendQuotationToClient(
     return { status: 'marked_only', reason: 'خادم البريد غير مضبوط' };
   }
 
-  const recipient = await resolveRecipient(q);
+  const recipient: Recipient | null = picked
+    ? { name: picked.name, email: picked.email, source: 'contact' }
+    : await resolveRecipient(q);
   if (!recipient) {
     await markSentInternal(`تعليم عرض السعر ${q.number} كمُرسل (لا يوجد بريد للمستلم)`);
     return {
@@ -161,6 +181,11 @@ export async function sendQuotationToClient(
       reason: 'لا يوجد بريد إلكتروني لجهة الاتصال أو للعميل المحتمل',
     };
   }
+
+  const cc = dedupeCc(
+    recipient.email,
+    ccContacts.map((c) => c.email),
+  );
 
   const lang: Lang = options.lang ?? (settings.locale.defaultLocale === 'en' ? 'en' : 'ar');
 
@@ -183,6 +208,7 @@ export async function sendQuotationToClient(
 
   const result = await sendMail({
     to: recipient.email,
+    cc,
     subject:
       lang === 'ar'
         ? `عرض سعر ${q.number} — ${settings.company.nameAr}`
@@ -223,7 +249,8 @@ export async function sendQuotationToClient(
   }
 
   await markSentInternal(
-    `إرسال عرض السعر ${q.number} بالبريد إلى ${maskEmail(recipient.email)}`,
+    `إرسال عرض السعر ${q.number} بالبريد إلى ${maskEmail(recipient.email)}` +
+      (cc.length ? ` (نسخة إلى ${cc.length})` : ''),
   );
   return { status: 'sent', to: recipient.email };
 }

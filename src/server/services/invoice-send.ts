@@ -4,6 +4,7 @@ import { requirePermission, NotFound, BadRequest, AppError } from '@/server/auth
 import { renderInvoicePdf } from './invoice-pdf';
 import { sendMail, renderEmail, appUrl, isMailEnabled, maskEmail } from './mailer';
 import { getSettings } from './settings';
+import { contactOptions, resolveChosenContacts, dedupeCc } from './recipients';
 import { audit } from './audit';
 import { formatMoney, formatDate } from '@/lib/format';
 import type { Lang } from './pdf-layout';
@@ -52,12 +53,21 @@ export async function previewInvoiceRecipient(invoiceId: string) {
     mailEnabled: isMailEnabled(),
     // البريد كاملًا لأن المستخدم على وشك الإرسال إليه ويجب أن يتحقق منه.
     recipient: contact ? { name: contact.name, email: contact.email! } : null,
+    // كل جهات اتصال العميل ليختار المستخدم مستلمًا آخر أو يضيف نسخة.
+    options: await contactOptions(invoice.clientId),
   };
 }
 
 export async function sendInvoiceToClient(
   invoiceId: string,
-  options: { email: boolean; lang?: Lang } = { email: true },
+  options: {
+    email: boolean;
+    lang?: Lang;
+    /** مستلم مختار يدويًا بدل الاختيار التلقائي. */
+    toContactId?: string;
+    /** جهات اتصال تُضاف كنسخة (CC). */
+    ccContactIds?: string[];
+  } = { email: true },
 ): Promise<InvoiceSendOutcome> {
   const user = await requirePermission('invoices', 'edit');
   const invoice = await prisma.invoice.findFirst({
@@ -66,6 +76,13 @@ export async function sendInvoiceToClient(
   });
   if (!invoice) throw NotFound('الفاتورة غير موجودة');
   if (invoice.status !== 'DRAFT') throw BadRequest('الفاتورة مُرسلة بالفعل');
+
+  // التحقق من المدخلات قبل أي تغيير حالة: معرّف خاطئ يجب أن يفشل الطلب لا أن
+  // يُتجاهل بصمت وتُعلَّم الفاتورة كمُرسلة.
+  const [picked] = options.toContactId
+    ? await resolveChosenContacts(invoice.clientId, [options.toContactId])
+    : [];
+  const ccContacts = await resolveChosenContacts(invoice.clientId, options.ccContactIds ?? []);
 
   const markSent = async (summary: string) => {
     await prisma.invoice.update({
@@ -92,11 +109,16 @@ export async function sendInvoiceToClient(
     return { status: 'marked_only', reason: 'خادم البريد غير مضبوط' };
   }
 
-  const contact = await resolveRecipient(invoice.clientId);
+  const contact = picked ?? (await resolveRecipient(invoice.clientId));
   if (!contact) {
     await markSent(`تعليم الفاتورة ${invoice.number} كمُرسلة (لا يوجد بريد لجهة اتصال)`);
     return { status: 'marked_only', reason: 'لا توجد جهة اتصال لها بريد إلكتروني عند هذا العميل' };
   }
+
+  const cc = dedupeCc(
+    contact.email!,
+    ccContacts.map((c) => c.email),
+  );
 
   const settings = await getSettings();
   const lang: Lang = options.lang ?? (settings.locale.defaultLocale === 'en' ? 'en' : 'ar');
@@ -129,6 +151,7 @@ export async function sendInvoiceToClient(
 
   const result = await sendMail({
     to: contact.email!,
+    cc,
     subject:
       lang === 'ar'
         ? `فاتورة ${invoice.number} — ${settings.company.nameAr}`
@@ -166,7 +189,10 @@ export async function sendInvoiceToClient(
     throw BadRequest(`تعذّر إرسال البريد: ${reason}`);
   }
 
-  await markSent(`إرسال الفاتورة ${invoice.number} بالبريد إلى ${maskEmail(contact.email!)}`);
+  await markSent(
+    `إرسال الفاتورة ${invoice.number} بالبريد إلى ${maskEmail(contact.email!)}` +
+      (cc.length ? ` (نسخة إلى ${cc.length})` : ''),
+  );
   return { status: 'sent', to: contact.email! };
 }
 

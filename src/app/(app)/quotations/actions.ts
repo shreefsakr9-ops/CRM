@@ -15,6 +15,7 @@ import {
   sendQuotationToClient,
   previewQuotationRecipient,
 } from '@/server/services/quotation-send';
+import type { ContactOption } from '@/server/services/recipients';
 import { AppError } from '@/server/auth/guard';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -67,23 +68,29 @@ export async function approveQuotationAction(
   });
 }
 
-/** يُستخدم لعرض المستلم في نافذة التأكيد قبل الإرسال. */
+/** يُستخدم لعرض المستلم وقائمة جهات الاتصال في نافذة التأكيد قبل الإرسال. */
 export async function quotationRecipientAction(id: string): Promise<
   Result<{
     mailEnabled: boolean;
     recipient: { name: string; email: string; source: 'contact' | 'lead' } | null;
+    options: ContactOption[];
     defaultLang: 'ar' | 'en';
   }>
 > {
   return guard(async () => {
-    const { mailEnabled, recipient, defaultLang } = await previewQuotationRecipient(id);
-    return { mailEnabled, recipient, defaultLang };
+    const { mailEnabled, recipient, options, defaultLang } = await previewQuotationRecipient(id);
+    return { mailEnabled, recipient, options, defaultLang };
   });
 }
 
 export async function markSentAction(
   id: string,
-  options: { email: boolean; lang?: 'ar' | 'en' } = { email: true },
+  options: {
+    email: boolean;
+    lang?: 'ar' | 'en';
+    toContactId?: string;
+    ccContactIds?: string[];
+  } = { email: true },
 ): Promise<Result<{ detail: string }>> {
   return guard(async () => {
     const outcome = await sendQuotationToClient(id, options);

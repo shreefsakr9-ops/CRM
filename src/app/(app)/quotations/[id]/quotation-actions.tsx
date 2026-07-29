@@ -7,6 +7,11 @@ import { Drawer } from '@/components/ui/drawer';
 import { Button, Field, Select, Textarea } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
 import {
+  RecipientPicker,
+  type RecipientOption,
+  type RecipientChoice,
+} from '@/components/recipient-picker';
+import {
   submitApprovalAction,
   approveQuotationAction,
   markSentAction,
@@ -43,8 +48,10 @@ export function QuotationActions({
   const [recipient, setRecipient] = React.useState<{
     mailEnabled: boolean;
     recipient: { name: string; email: string; source: 'contact' | 'lead' } | null;
+    options: RecipientOption[];
     defaultLang: 'ar' | 'en';
   } | null>(null);
+  const [choice, setChoice] = React.useState<RecipientChoice>({ ccContactIds: [] });
 
   const run = async (fn: () => Promise<{ ok: boolean; error?: string }>, msg: string) => {
     setPending(true);
@@ -60,6 +67,7 @@ export function QuotationActions({
   const openSend = async () => {
     setDrawer('send');
     setRecipient(null);
+    setChoice({ ccContactIds: [] });
     const res = await quotationRecipientAction(id);
     if (res.ok && res.data) setRecipient(res.data);
     else if (!res.ok) toast.error(res.error);
@@ -67,13 +75,24 @@ export function QuotationActions({
 
   const send = async (email: boolean, lang: 'ar' | 'en') => {
     setPending(true);
-    const res = await markSentAction(id, { email, lang });
+    const res = await markSentAction(id, {
+      email,
+      lang,
+      toContactId: choice.toContactId,
+      ccContactIds: choice.ccContactIds,
+    });
     setPending(false);
     if (!res.ok) return toast.error(res.error);
     toast.success(res.data?.detail ?? 'تم');
     setDrawer(null);
     router.refresh();
   };
+
+  // صندوق المستلم يتبع الاختيار اليدوي إن وُجد — لا يُعرض عنوان ويُرسل لغيره.
+  const chosen = recipient?.options.find((o) => o.id === choice.toContactId);
+  const effective = chosen
+    ? { name: chosen.name, email: chosen.email, source: 'contact' as const }
+    : (recipient?.recipient ?? null);
 
   const canSubmit = perms.canEdit && ['DRAFT', 'REVISED'].includes(status);
   const canDecide = perms.canApprove && status === 'PENDING_INTERNAL_APPROVAL';
@@ -158,24 +177,30 @@ export function QuotationActions({
                 العرض كمُرسل.
               </p>
             )}
-            {recipient.mailEnabled && !recipient.recipient && (
+            {recipient.mailEnabled && !effective && (
               <p className="rounded-md border border-warn/25 bg-warn/10 p-3 text-xs leading-6 text-ink-muted">
                 لا يوجد بريد إلكتروني لجهة الاتصال ولا للعميل المحتمل. أضف البريد أولًا ليصله العرض
                 تلقائيًا.
               </p>
             )}
-            {recipient.mailEnabled && recipient.recipient && (
+            {recipient.mailEnabled && effective && (
               <>
                 <div className="rounded-md border border-line bg-surface-sunken/60 p-3">
                   <p className="text-[11px] text-ink-faint">
                     سيصل البريد مع مرفق PDF إلى
-                    {recipient.recipient.source === 'lead' ? ' (بريد العميل المحتمل)' : ''}
+                    {effective.source === 'lead' ? ' (بريد العميل المحتمل)' : ''}
                   </p>
-                  <p className="mt-0.5 text-sm text-ink">{recipient.recipient.name}</p>
+                  <p className="mt-0.5 text-sm text-ink">{effective.name}</p>
                   <p className="num text-xs text-ink-muted" dir="ltr">
-                    {recipient.recipient.email}
+                    {effective.email}
                   </p>
                 </div>
+                <RecipientPicker
+                  options={recipient.options}
+                  value={choice}
+                  onChange={setChoice}
+                  disabled={pending}
+                />
                 <Field label="لغة المستند">
                   <Select
                     name="lang"
@@ -205,7 +230,7 @@ export function QuotationActions({
                 <MailX className="h-3.5 w-3.5" />
                 تعليم كمُرسل فقط
               </Button>
-              {recipient.mailEnabled && recipient.recipient && (
+              {recipient.mailEnabled && effective && (
                 <Button
                   type="submit"
                   size="sm"

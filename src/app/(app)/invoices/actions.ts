@@ -16,6 +16,7 @@ import {
   expenseSchema,
 } from '@/server/services/invoices';
 import { sendInvoiceToClient, previewInvoiceRecipient } from '@/server/services/invoice-send';
+import type { ContactOption } from '@/server/services/recipients';
 import { AppError } from '@/server/auth/guard';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -55,16 +56,22 @@ export async function invoiceFromQuotationAction(quotationId: string): Promise<R
   });
 }
 
-/** يُستخدم لعرض المستلم في نافذة التأكيد قبل الإرسال. */
+/** يُستخدم لعرض المستلم وقائمة جهات الاتصال في نافذة التأكيد قبل الإرسال. */
 export async function invoiceRecipientAction(
   id: string,
-): Promise<Result<{ mailEnabled: boolean; recipient: { name: string; email: string } | null }>> {
+): Promise<
+  Result<{
+    mailEnabled: boolean;
+    recipient: { name: string; email: string } | null;
+    options: ContactOption[];
+  }>
+> {
   return guard(() => previewInvoiceRecipient(id));
 }
 
 export async function sendInvoiceAction(
   id: string,
-  options: { email: boolean } = { email: true },
+  options: { email: boolean; toContactId?: string; ccContactIds?: string[] } = { email: true },
 ): Promise<Result<{ detail: string }>> {
   return guard(async () => {
     const outcome = await sendInvoiceToClient(id, options);
