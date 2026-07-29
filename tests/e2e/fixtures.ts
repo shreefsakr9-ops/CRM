@@ -31,6 +31,8 @@ export interface E2EData {
   clientId: string;
   invoiceId: string;
   invoiceNumber: string;
+  quotationId: string;
+  quotationNumber: string;
   outOfScopeLeadId: string;
   convertibleLeadId: string;
   convertibleLeadPhone: string;
@@ -161,6 +163,39 @@ export async function seedE2EData(): Promise<E2EData> {
     },
   });
 
+  // عرض سعر معتمد داخليًا فعليًا (لا نمرّ بدورة الاعتماد) — الإرسال يتطلب
+  // ذلك افتراضيًا (`requireInternalApproval`)، وموضوع الاختبار هو نافذة
+  // الإرسال واختيار المستلم لا دورة الاعتماد.
+  const quotationNumber = 'E2E-QUO-0001';
+  await prisma.quotation.deleteMany({ where: { number: quotationNumber } });
+  const quotation = await prisma.quotation.create({
+    data: {
+      number: quotationNumber,
+      clientId: client.id,
+      status: 'APPROVED_INTERNALLY',
+      issueDate: new Date(),
+      expiryDate: new Date(Date.now() + 14 * 86_400_000),
+      currency: 'EGP',
+      subtotalMinor: 300_000n,
+      totalMinor: 300_000n,
+      preparedById: admin.id,
+      items: {
+        create: [
+          {
+            nameAr: 'خدمة عرض سعر',
+            nameEn: 'Quotation service',
+            quantity: 1,
+            unitPriceMinor: 300_000n,
+            taxRate: 0,
+            subtotalMinor: 300_000n,
+            totalMinor: 300_000n,
+            sortOrder: 0,
+          },
+        ],
+      },
+    },
+  });
+
   // عميل محتمل مسنَد للمدير — المندوب نطاقه OWN فلا يراه، والوصول المباشر
   // بمعرّفه يجب أن يعيد 404 لا 403 حتى لا يكشف وجوده.
   const leadId = 'e2e-out-of-scope-lead';
@@ -211,6 +246,8 @@ export async function seedE2EData(): Promise<E2EData> {
     clientId: client.id,
     invoiceId: invoice.id,
     invoiceNumber: number,
+    quotationId: quotation.id,
+    quotationNumber,
     outOfScopeLeadId: lead.id,
     convertibleLeadId,
     convertibleLeadPhone,

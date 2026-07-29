@@ -123,6 +123,35 @@ describe('نافذة إرسال الفاتورة', () => {
   });
 });
 
+describe('نافذة إرسال عرض السعر', () => {
+  it('تعرض المستلم التلقائي وتتيح تغييره وإضافة نسخة', async () => {
+    const page = session.page;
+    await page.goto(`/quotations/${data.quotationId}`, { waitUntil: 'domcontentloaded' });
+
+    await page.click('button:has-text("إرسال للعميل")');
+    // الاختيار التلقائي لعروض الأسعار يفضّل صاحب القرار — نتحقق من ظهوره أولًا.
+    await page.waitForSelector('text=e2e.boss@example.com', { timeout: 20_000 });
+
+    const select = page.locator('select').filter({ hasText: 'الاختيار التلقائي' }).first();
+    await expect.poll(() => select.count()).toBe(1);
+
+    const options = await select.locator('option').allInnerTexts();
+    expect(options.some((o) => o.includes('e2e.finance@example.com'))).toBe(true);
+
+    // التبديل إلى جهة الاتصال المالية يجب أن يغيّر العنوان المعروض فعليًا —
+    // نفس التحقق الذي أجري على الفاتورة، على الكود المشترك (RecipientPicker).
+    const financeValue = await select
+      .locator('option', { hasText: 'e2e.finance@example.com' })
+      .first()
+      .getAttribute('value');
+    await select.selectOption(financeValue!);
+    await page.waitForSelector('text=e2e.finance@example.com', { timeout: 10_000 });
+
+    const drawer = await page.locator('[role="dialog"]').first().innerText();
+    expect(drawer).toContain('e2e.finance@example.com');
+  });
+});
+
 describe('توليد PDF فعلي', () => {
   it('تنزيل فاتورة PDF يعطي ملفًا صالحًا بخط عربي مضمَّن', async () => {
     // اختبارات الوحدة تفحص بناء الـHTML فقط. هذا يفحص المسار الكامل حتى
