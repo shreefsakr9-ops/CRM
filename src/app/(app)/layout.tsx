@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/server/auth/session';
 import { can } from '@/server/auth/guard';
 import { prisma } from '@/server/db';
+import { mustEnrollTwoFactor } from '@/server/services/two-factor';
 import { AppShell } from '@/components/shell/app-shell';
 import { NAV } from '@/components/shell/nav-config';
 import { ROLE_LABELS, type RoleKey } from '@/server/auth/permissions';
@@ -10,6 +11,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   if (user.mustResetPassword) redirect('/reset-password?forced=1');
+  // الأدوار المُلزَمة بالمصادقة الثنائية لا تصل إلى أي بيانات قبل تفعيلها.
+  // صفحة التفعيل خارج هذه المجموعة عمدًا حتى لا تدور إعادة التوجيه على نفسها.
+  if (await mustEnrollTwoFactor(user)) redirect('/setup-2fa');
 
   // إخفاء عناصر التنقل غير المصرح بها (تجميلي — الحماية الفعلية على السيرفر في كل Service)
   const sections = NAV.map((s) => ({

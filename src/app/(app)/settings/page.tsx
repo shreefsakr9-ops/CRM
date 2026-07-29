@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
   const user = await requirePermission('settings', 'view');
-  const [settings, sequences, stages, sources, lossReasons, taxRates, departments, currencies, countries] =
+  const [settings, sequences, stages, sources, lossReasons, taxRates, departments, currencies, countries, roles] =
     await Promise.all([
       getSettings(true),
       peekSequences(),
@@ -27,6 +27,7 @@ export default async function SettingsPage() {
       prisma.department.findMany({ where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } }),
       prisma.currency.findMany({ orderBy: { sortOrder: 'asc' } }),
       prisma.country.findMany(),
+      prisma.role.findMany({ orderBy: { sortOrder: 'asc' }, select: { key: true, nameAr: true } }),
     ]);
 
   return (
@@ -58,6 +59,7 @@ export default async function SettingsPage() {
             departments,
             currencies,
             countries,
+            roles,
           }) as never
         }
         mail={mailStatus()}

@@ -38,6 +38,10 @@ export interface SystemSettings {
   projects: { atRiskDaysBeforeEnd: number; atRiskProgressThreshold: number; clientWaitAlertDays: number };
   files: { maxSizeMb: number; allowedTypes: string[]; retentionDays: number };
   backup: { enabled: boolean; retentionDays: number; notifyEmail: string };
+  security: {
+    /** مفاتيح الأدوار التي يُلزَم أصحابها بتفعيل المصادقة الثنائية قبل استخدام النظام. */
+    requireTwoFactorRoles: string[];
+  };
 }
 
 export const DEFAULT_SETTINGS: SystemSettings = {
@@ -92,6 +96,9 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     retentionDays: 3650,
   },
   backup: { enabled: true, retentionDays: 30, notifyEmail: '' },
+  // الحسابات الأعلى صلاحية أولًا: من يملكها يستطيع تعديل الصلاحيات ورؤية كل
+  // البيانات المالية، فاختراق واحد منها يكافئ اختراق النظام كله.
+  security: { requireTwoFactorRoles: ['SUPER_ADMIN'] },
 };
 
 type SettingsCache = { value: SystemSettings; at: number } | null;

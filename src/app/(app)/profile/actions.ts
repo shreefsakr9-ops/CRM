@@ -89,10 +89,20 @@ export async function beginTwoFactorAction(): Promise<DataResult<TwoFactorSetup>
   return guardData(() => beginTwoFactorSetup());
 }
 
+/**
+ * لا يستدعي `revalidatePath` عمدًا.
+ *
+ * إعادة التحقق تُعيد تشغيل حارس صفحة التفعيل الإجباري، وبما أن التفعيل اكتمل
+ * للتوّ يعيد الحارس التوجيه إلى لوحة التحكم — فتختفي رموز الاسترجاع قبل أن
+ * يراها المستخدم. وهي تُعرض مرة واحدة فقط ولا يمكن استعادتها، فيبقى صاحب
+ * الحساب بلا وسيلة استرجاع إن فقد هاتفه.
+ *
+ * الواجهة تستدعي `router.refresh()` بنفسها بعد عرض الرموز — وهو يحافظ على حالة
+ * مكوّنات العميل.
+ */
 export async function confirmTwoFactorAction(code: string): Promise<DataResult<string[]>> {
   return guardData(async () => {
     const { recoveryCodes } = await confirmTwoFactor(code);
-    revalidatePath('/profile');
     return recoveryCodes;
   });
 }

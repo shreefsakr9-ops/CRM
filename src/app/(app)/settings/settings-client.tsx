@@ -46,6 +46,7 @@ interface Settings {
   projects: { atRiskDaysBeforeEnd: number; atRiskProgressThreshold: number; clientWaitAlertDays: number };
   files: { maxSizeMb: number; retentionDays: number; allowedTypes: string[] };
   backup: { enabled: boolean; retentionDays: number; notifyEmail: string };
+  security: { requireTwoFactorRoles: string[] };
 }
 
 interface Reference {
@@ -76,6 +77,7 @@ interface Reference {
   departments: { id: string; key: string; nameAr: string; nameEn: string; isActive: boolean }[];
   currencies: { code: string; nameAr: string; isActive: boolean }[];
   countries: { code: string; nameAr: string }[];
+  roles: { key: string; nameAr: string }[];
 }
 
 interface MailStatus {
@@ -93,6 +95,7 @@ const TABS = [
   ['reference', 'البيانات المرجعية'],
   ['numbering', 'الترقيم والملفات'],
   ['mail', 'البريد الإلكتروني'],
+  ['security', 'الحماية'],
 ] as const;
 
 export function SettingsClient({
@@ -591,6 +594,16 @@ export function SettingsClient({
 
       {tab === 'mail' && <MailPanel mail={mail} canManage={canManage} />}
 
+      {tab === 'security' && (
+        <SecurityPanel
+          value={settings.security.requireTwoFactorRoles}
+          roles={reference.roles}
+          canEdit={canEdit}
+          pending={pending}
+          onSave={(roles) => save('security', { requireTwoFactorRoles: roles })}
+        />
+      )}
+
       <ReferenceDrawer
         editing={editing}
         countries={reference.countries}
@@ -986,5 +999,74 @@ function ReferenceDrawer({
         </div>
       </form>
     </Drawer>
+  );
+}
+
+/**
+ * سياسة المصادقة الثنائية.
+ * الإلزام يُفرض عند دخول التطبيق: صاحب الدور المُلزَم يُوجَّه إلى شاشة التفعيل
+ * ولا يصل إلى أي بيانات قبلها.
+ */
+function SecurityPanel({
+  value,
+  roles,
+  canEdit,
+  pending,
+  onSave,
+}: {
+  value: string[];
+  roles: { key: string; nameAr: string }[];
+  canEdit: boolean;
+  pending: boolean;
+  onSave: (roles: string[]) => void;
+}) {
+  const [selected, setSelected] = React.useState<string[]>(value);
+
+  const toggle = (key: string) =>
+    setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
+  return (
+    <Card>
+      <CardHeader
+        title="إلزام المصادقة الثنائية"
+        subtitle="الأدوار المحددة هنا لا تصل إلى النظام قبل تفعيل التحقق بخطوتين"
+      />
+      <CardBody className="space-y-4">
+        <p className="text-xs leading-6 text-ink-muted">
+          الإلزام يبدأ فورًا: من يملك أحد هذه الأدوار ولم يفعّلها سيُوجَّه إلى شاشة التفعيل عند
+          دخوله القادم. لن يفقد أحد حسابه — التفعيل يتم بتطبيق مصادقة على هاتفه، ومن يفقد جهازه
+          يعيد المسؤول تعيينه من صفحة المستخدمين.
+        </p>
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          {roles.map((role) => (
+            <label
+              key={role.key}
+              className={cn(
+                'flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors',
+                selected.includes(role.key)
+                  ? 'border-brand/40 bg-brand/10 text-ink'
+                  : 'border-line text-ink-muted hover:border-line-strong',
+                !canEdit && 'pointer-events-none opacity-60',
+              )}
+            >
+              <Checkbox
+                checked={selected.includes(role.key)}
+                onChange={() => toggle(role.key)}
+                disabled={!canEdit}
+              />
+              <span className="min-w-0 truncate">{role.nameAr}</span>
+            </label>
+          ))}
+        </div>
+        {canEdit && (
+          <div className="flex justify-end border-t border-line pt-4">
+            <Button type="button" loading={pending} onClick={() => onSave(selected)}>
+              <Save className="h-4 w-4" />
+              حفظ سياسة الحماية
+            </Button>
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }

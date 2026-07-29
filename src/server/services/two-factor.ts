@@ -169,6 +169,30 @@ export async function regenerateRecoveryCodes(password: string): Promise<string[
   return codes;
 }
 
+/**
+ * هل هذا الدور مُلزَم بالمصادقة الثنائية؟
+ *
+ * الإلزام يُفرض عند دخول التطبيق لا عند تسجيل الدخول: المستخدم يدخل فعلًا لكنه
+ * لا يصل إلى أي بيانات قبل التفعيل — وإلا لما استطاع تفعيلها أصلًا.
+ */
+export async function isTwoFactorRequiredForRole(roleKey: string): Promise<boolean> {
+  const settings = await getSettings();
+  return settings.security.requireTwoFactorRoles.includes(roleKey);
+}
+
+/** يحدد ما إذا كان يجب توجيه المستخدم لصفحة التفعيل الإجباري. */
+export async function mustEnrollTwoFactor(user: {
+  id: string;
+  roleKey: string;
+}): Promise<boolean> {
+  if (!(await isTwoFactorRequiredForRole(user.roleKey))) return false;
+  const record = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { twoFactorEnabled: true },
+  });
+  return record?.twoFactorEnabled === false;
+}
+
 export async function twoFactorStatus() {
   const user = await requireUser();
   const [record, remaining] = await Promise.all([

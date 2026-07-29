@@ -7,6 +7,7 @@ const twoFactor = await import('@/server/services/two-factor');
 const { totpCode, generateTotpSecret, normalizeRecoveryCode } = await import('@/server/auth/totp');
 const { sha256 } = await import('@/server/auth/password');
 const { AppError } = await import('@/server/auth/guard');
+const settings = await import('@/server/services/settings');
 
 const USER = 'tfa.user@bluepoint.local';
 const ADMIN = 'tfa.admin@bluepoint.local';
@@ -230,5 +231,61 @@ describe('إعادة التعيين الإدارية', () => {
   it('يرفض إعادة التعيين لمن لم يفعّلها', async () => {
     await actAs(ADMIN);
     await expect(twoFactor.resetUserTwoFactor(userId)).rejects.toBeInstanceOf(AppError);
+  });
+});
+
+describe('إلزام المصادقة الثنائية حسب الدور', () => {
+  async function setRequiredRoles(roles: string[]) {
+    await actAs(ADMIN);
+    await settings.updateSettingSection(
+      'security',
+      { requireTwoFactorRoles: roles },
+      (await actAs(ADMIN)).id,
+    );
+    settings.invalidateSettingsCache();
+  }
+
+  it('الدور غير المُلزَم لا يُطالَب بالتفعيل', async () => {
+    await setRequiredRoles(['SUPER_ADMIN']);
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { email: USER },
+      select: { id: true, role: { select: { key: true } } },
+    });
+    expect(await twoFactor.mustEnrollTwoFactor({ id: user.id, roleKey: user.role.key })).toBe(false);
+  });
+
+  it('الدور المُلزَم يُطالَب بالتفعيل ما لم يفعّلها', async () => {
+    await setRequiredRoles(['ACCOUNT_MANAGER']);
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { email: USER },
+      select: { id: true, role: { select: { key: true } } },
+    });
+    expect(await twoFactor.mustEnrollTwoFactor({ id: user.id, roleKey: user.role.key })).toBe(true);
+  });
+
+  it('بعد التفعيل لا يُطالَب مجددًا', async () => {
+    await setRequiredRoles(['ACCOUNT_MANAGER']);
+    await enableFor(USER);
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { email: USER },
+      select: { id: true, role: { select: { key: true } } },
+    });
+    expect(await twoFactor.mustEnrollTwoFactor({ id: user.id, roleKey: user.role.key })).toBe(false);
+  });
+
+  it('إعادة التعيين الإدارية تُعيد المطالبة بالتفعيل', async () => {
+    await setRequiredRoles(['ACCOUNT_MANAGER']);
+    await enableFor(USER);
+
+    await actAs(ADMIN);
+    await twoFactor.resetUserTwoFactor(userId);
+
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { email: USER },
+      select: { id: true, role: { select: { key: true } } },
+    });
+    // المستخدم لا يبقى بلا حماية بصمت — يُطالَب بالتفعيل عند دخوله القادم.
+    expect(await twoFactor.mustEnrollTwoFactor({ id: user.id, roleKey: user.role.key })).toBe(true);
+    await setRequiredRoles(['SUPER_ADMIN']);
   });
 });
