@@ -58,7 +58,11 @@ export async function login(emailRaw: string, password: string): Promise<LoginRe
     return { ok: false, error: 'محاولات كثيرة — حاول بعد ١٥ دقيقة' };
   }
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  // الأسرار محذوفة افتراضيًا على مستوى العميل؛ نطلبها هنا صراحةً لأن التحقق يحتاجها.
+  const user = await prisma.user.findUnique({
+    where: { email },
+    omit: { passwordHash: false, twoFactorSecret: false },
+  });
 
   // نفس الرسالة ونفس التكلفة الزمنية تقريبًا حتى لا نكشف وجود الحساب.
   if (!user || user.deletedAt) {
@@ -248,7 +252,10 @@ export async function resetPassword(token: string, newPassword: string) {
 }
 
 export async function changeOwnPassword(userId: string, current: string, next: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    omit: { passwordHash: false },
+  });
   if (!user) throw BadRequest('المستخدم غير موجود');
   if (!(await verifyPassword(current, user.passwordHash))) {
     throw BadRequest('كلمة المرور الحالية غير صحيحة');

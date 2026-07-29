@@ -9,6 +9,8 @@ const { getProject, createProject, updateProject } = await import('@/server/serv
 const { getClient, createClient } = await import('@/server/services/clients');
 const { AppError } = await import('@/server/auth/guard');
 const { listUsers } = await import('@/server/services/users');
+// عميل التطبيق نفسه (لا عميل الاختبارات) لأن إعداد الحذف مضبوط عليه.
+const { prisma: appPrisma } = await import('@/server/db');
 
 const SALES1 = 'test.sales1@bluepoint.local';
 const SALES2 = 'test.sales2@bluepoint.local';
@@ -252,6 +254,38 @@ describe('كشف التكرار', () => {
       { allowDuplicate: true },
     );
     expect(lead.id).toBeTruthy();
+  });
+});
+
+describe('حذف الأسرار افتراضيًا من طبقة البيانات', () => {
+  /**
+   * الحماية البنيوية: عميل Prisma يحذف الأسرار من كل استعلام، فلا يعود منع
+   * التسريب معتمدًا على تذكّر كتابة `select` في كل مرة.
+   */
+  it('الاستعلام العادي لا يعيد hash كلمة المرور ولا سر المصادقة الثنائية', async () => {
+    const user = await appPrisma.user.findFirstOrThrow({ where: { email: ADMIN } });
+    expect('passwordHash' in user).toBe(false);
+    expect('twoFactorSecret' in user).toBe(false);
+  });
+
+  it('الجلسات ورموز الاسترجاع لا تعيد قيم الـhash', async () => {
+    const session = await appPrisma.session.findFirst();
+    if (session) expect('tokenHash' in session).toBe(false);
+    const recovery = await appPrisma.twoFactorRecoveryCode.findFirst();
+    if (recovery) expect('codeHash' in recovery).toBe(false);
+  });
+
+  it('العلاقات المتداخلة محذوفة أيضًا فلا يتسرّب السر عبر include', async () => {
+    const withUser = await appPrisma.session.findFirst({ include: { user: true } });
+    if (withUser) expect('passwordHash' in withUser.user).toBe(false);
+  });
+
+  it('طبقة المصادقة تستطيع طلب السر صراحةً عند الحاجة', async () => {
+    const user = await appPrisma.user.findFirstOrThrow({
+      where: { email: ADMIN },
+      omit: { passwordHash: false },
+    });
+    expect(user.passwordHash).toContain('scrypt$');
   });
 });
 
