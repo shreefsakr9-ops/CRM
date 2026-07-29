@@ -1,0 +1,15 @@
+{
+  "name": "Blue Point OS",
+  "short_name": "Blue Point",
+  "description": "نظام Blue Point الداخلي لإدارة العملاء والمبيعات والمشاريع والمالية",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#060F1B",
+  "theme_color": "#0B1A2F",
+  "orientation": "any",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    { "src": "/brand/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

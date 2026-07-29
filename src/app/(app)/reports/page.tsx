@@ -1,0 +1,52 @@
+import type { Metadata } from 'next';
+import { requirePermission, can } from '@/server/auth/guard';
+import {
+  salesReport,
+  operationsReport,
+  financialReport,
+  marketingReport,
+  parseRange,
+} from '@/server/services/reports';
+import { PageHeader } from '@/components/page-header';
+import { ReportsClient } from './reports-client';
+import { plain } from '@/lib/utils';
+
+export const metadata: Metadata = { title: 'التقارير' };
+export const dynamic = 'force-dynamic';
+
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string; tab?: string }>;
+}) {
+  const sp = await searchParams;
+  const user = await requirePermission('reports', 'view');
+  const range = parseRange(sp.from, sp.to);
+
+  const canFinance = can(user, 'reports', 'view_financial');
+
+  const [sales, operations, financial, marketing] = await Promise.all([
+    salesReport(range),
+    can(user, 'projects', 'view') ? operationsReport(range) : Promise.resolve(null),
+    canFinance ? financialReport(range) : Promise.resolve(null),
+    marketingReport(range),
+  ]);
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="التقارير"
+        description="كل الأرقام محسوبة من البيانات الفعلية في قاعدة البيانات"
+        breadcrumbs={[{ label: 'التقارير' }]}
+      />
+      <ReportsClient
+        sales={plain(sales) as never}
+        operations={plain(operations) as never}
+        financial={plain(financial) as never}
+        marketing={plain(marketing) as never}
+        range={{ from: range.from.toISOString().slice(0, 10), to: range.to.toISOString().slice(0, 10) }}
+        canExport={can(user, 'reports', 'export')}
+      />
+    </div>
+  );
+}

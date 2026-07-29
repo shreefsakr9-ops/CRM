@@ -1,0 +1,216 @@
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
+import { mockSession, actAs, createTestUser, prisma, resetBusinessData } from './helpers';
+
+mockSession();
+
+/**
+ * توليد الـPDF يحتاج Chromium وهو غير متاح في CI، وهذه الاختبارات تخص منطق
+ * الإرسال لا التوليد (يغطيه documents.test.ts). نستبدل المولّد ونتحكم في فشله.
+ */
+const pdf = vi.hoisted(() => ({ shouldFail: false }));
+vi.mock('@/server/services/invoice-pdf', () => ({
+  renderInvoicePdf: async () => {
+    if (pdf.shouldFail) throw new Error('browserType.launch: Executable doesn\'t exist');
+    return Buffer.from('%PDF-1.4 stub');
+  },
+  renderInvoiceHtml: async () => '<html></html>',
+}));
+
+const { sendInvoiceToClient, previewInvoiceRecipient } = await import(
+  '@/server/services/invoice-send'
+);
+const { createClient, upsertContact } = await import('@/server/services/clients');
+const { createInvoice } = await import('@/server/services/invoices');
+const { AppError } = await import('@/server/auth/guard');
+
+const FINANCE = 'send.finance@bluepoint.local';
+const ADMIN = 'send.admin@bluepoint.local';
+const state = { clientId: '', invoiceId: '', otherClientId: '', otherContactId: '' };
+
+/** ينشئ فاتورة مسودة جديدة لكل اختبار — الإرسال عملية تتم مرة واحدة. */
+async function newDraftInvoice() {
+  const invoice = await createInvoice({
+    clientId: state.clientId,
+    issueDate: new Date().toISOString(),
+    dueDate: new Date(Date.now() + 14 * 86_400_000).toISOString(),
+    currency: 'EGP',
+    items: [{ nameAr: 'خدمة', nameEn: 'Service', quantity: 1, unitPrice: 5000, taxRate: 0 }],
+  } as never);
+  return invoice.id;
+}
+
+beforeAll(async () => {
+  await resetBusinessData();
+  await createTestUser({ email: FINANCE, name: 'محاسب', roleKey: 'FINANCE' });
+  await createTestUser({ email: ADMIN, name: 'مدير النظام', roleKey: 'SUPER_ADMIN' });
+  // دور المالية يرى العملاء ولا ينشئهم — التهيئة بحساب المسؤول.
+  await actAs(ADMIN);
+
+  const client = await createClient({
+    legalName: 'عميل الإرسال',
+    industry: 'OTHER',
+    status: 'ACTIVE',
+    country: 'EG',
+  } as never);
+  state.clientId = client.id;
+
+  // عميل ثانٍ بجهة اتصال — لاختبار منع الإرسال عبر العملاء.
+  const other = await createClient({
+    legalName: 'عميل آخر',
+    industry: 'OTHER',
+    status: 'ACTIVE',
+    country: 'EG',
+  } as never);
+  state.otherClientId = other.id;
+  const otherContact = await upsertContact({
+    clientId: other.id,
+    name: 'جهة عميل آخر',
+    type: 'FINANCE',
+    email: 'other@example.com',
+  } as never);
+  state.otherContactId = otherContact.id;
+});
+
+/** الاختبارات تشترك في عملية واحدة، فأي تعديل على البيئة يجب أن يُنظَّف بالكامل. */
+function clearSmtpEnv() {
+  delete process.env.SMTP_HOST;
+  delete process.env.SMTP_PORT;
+  pdf.shouldFail = false;
+}
+
+beforeEach(async () => {
+  clearSmtpEnv();
+  await actAs(FINANCE);
+  state.invoiceId = await newDraftInvoice();
+});
+
+afterEach(clearSmtpEnv);
+
+describe('اختيار المستلم', () => {
+  it('لا يجد مستلمًا عند غياب جهات الاتصال', async () => {
+    const preview = await previewInvoiceRecipient(state.invoiceId);
+    expect(preview.recipient).toBeNull();
+  });
+
+  it('يفضّل جهة الاتصال المالية على الرئيسية', async () => {
+    await actAs(ADMIN);
+    await upsertContact({
+      clientId: state.clientId,
+      name: 'جهة رئيسية',
+      type: 'MAIN',
+      email: 'main@example.com',
+      isPrimary: true,
+    } as never);
+    await upsertContact({
+      clientId: state.clientId,
+      name: 'الحسابات',
+      type: 'FINANCE',
+      email: 'finance@example.com',
+    } as never);
+
+    await actAs(FINANCE);
+    const preview = await previewInvoiceRecipient(state.invoiceId);
+    expect(preview.recipient?.email).toBe('finance@example.com');
+  });
+});
+
+describe('إرسال الفاتورة', () => {
+  it('التعليم كمُرسلة بدون بريد يغيّر الحالة ويوضّح ذلك', async () => {
+    const outcome = await sendInvoiceToClient(state.invoiceId, { email: false });
+    expect(outcome.status).toBe('marked_only');
+
+    const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: state.invoiceId } });
+    expect(invoice.status).toBe('SENT');
+    expect(invoice.sentAt).not.toBeNull();
+  });
+
+  it('طلب الإرسال بالبريد بدون SMTP لا يفشل بل يعلّمها كمُرسلة ويذكر السبب', async () => {
+    const outcome = await sendInvoiceToClient(state.invoiceId, { email: true });
+    expect(outcome.status).toBe('marked_only');
+    if (outcome.status === 'marked_only') expect(outcome.reason).toContain('البريد');
+  });
+
+  it('فشل خادم البريد يُبقي الفاتورة مسودة حتى يمكن إعادة المحاولة', async () => {
+    // مضيف غير موجود — الاتصال يفشل حتمًا بلا أي إرسال حقيقي.
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = '1';
+
+    await expect(sendInvoiceToClient(state.invoiceId, { email: true })).rejects.toBeInstanceOf(
+      AppError,
+    );
+
+    const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: state.invoiceId } });
+    expect(invoice.status).toBe('DRAFT');
+    expect(invoice.sentAt).toBeNull();
+  });
+
+  it('فشل توليد الـPDF يعطي خطأً مفهومًا ويُبقي الفاتورة مسودة', async () => {
+    process.env.SMTP_HOST = 'smtp.example.com';
+    pdf.shouldFail = true;
+
+    await expect(sendInvoiceToClient(state.invoiceId, { email: true })).rejects.toThrow(
+      /تعذّر توليد ملف الفاتورة/,
+    );
+
+    const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: state.invoiceId } });
+    expect(invoice.status).toBe('DRAFT');
+  });
+
+  it('لا يمكن إرسال فاتورة مُرسلة مرتين', async () => {
+    await sendInvoiceToClient(state.invoiceId, { email: false });
+    await expect(sendInvoiceToClient(state.invoiceId, { email: false })).rejects.toBeInstanceOf(
+      AppError,
+    );
+  });
+
+  it('يسجّل الإرسال في سجل التدقيق ببريد مُخفى جزئيًا', async () => {
+    await sendInvoiceToClient(state.invoiceId, { email: false });
+    const log = await prisma.auditLog.findFirst({
+      where: { entityId: state.invoiceId, action: 'STATUS_CHANGE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(log?.summary).toContain('تعليم');
+    // لا يظهر بريد كامل في السجل عند التعليم اليدوي.
+    expect(log?.summary).not.toContain('finance@example.com');
+  });
+});
+
+describe('اختيار المستلم يدويًا ونسخة CC', () => {
+  it('يعيد قائمة جهات اتصال العميل للاختيار منها', async () => {
+    const preview = await previewInvoiceRecipient(state.invoiceId);
+    expect(preview.options.length).toBeGreaterThan(0);
+    expect(preview.options.every((o) => o.email.includes('@'))).toBe(true);
+  });
+
+  it('يرفض مستلمًا يخص عميلًا آخر', async () => {
+    // بدون هذا التحقق تُرسل فاتورة عميل إلى جهة اتصال عميل مختلف.
+    await expect(
+      sendInvoiceToClient(state.invoiceId, { email: true, toContactId: state.otherContactId }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+
+    const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: state.invoiceId } });
+    expect(invoice.status).toBe('DRAFT');
+  });
+
+  it('يرفض نسخة CC تخص عميلًا آخر', async () => {
+    await expect(
+      sendInvoiceToClient(state.invoiceId, { email: true, ccContactIds: [state.otherContactId] }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+  });
+
+  it('يرفض معرّف جهة اتصال غير موجود', async () => {
+    await expect(
+      sendInvoiceToClient(state.invoiceId, { email: true, toContactId: 'does-not-exist' }),
+    ).rejects.toThrow(/لا تخص هذا العميل/);
+  });
+});
+
+describe('تنقية نسخ CC', () => {
+  it('يستبعد المستلم الأساسي من النسخ ويزيل التكرار', async () => {
+    const { dedupeCc } = await import('@/server/services/recipients');
+    expect(dedupeCc('a@x.com', ['a@x.com', 'b@x.com', 'B@x.com', 'c@x.com'])).toEqual([
+      'b@x.com',
+      'c@x.com',
+    ]);
+  });
+});
