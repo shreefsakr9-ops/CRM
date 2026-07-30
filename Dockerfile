@@ -54,6 +54,9 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
 COPY --from=builder /app/node_modules/zod ./node_modules/zod
+# روابط node_modules/.bin/{prisma,tsx} تشير إلى الحزم المنسوخة أعلاه —
+# بدونها يفشل "npx prisma"/"npx tsx" وقت التشغيل بحثًا عن رابط محلي غير موجود.
+COPY --from=builder --chown=bluepoint:nodejs /app/node_modules/.bin ./node_modules/.bin
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
