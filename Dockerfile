@@ -49,14 +49,10 @@ COPY --from=builder --chown=bluepoint:nodejs /app/.next/static ./.next/static
 
 # مطلوبة للمايجريشن والـ worker والـ seed في وقت التشغيل
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
-COPY --from=builder /app/node_modules/zod ./node_modules/zod
-# روابط node_modules/.bin/{prisma,tsx} تشير إلى الحزم المنسوخة أعلاه —
-# بدونها يفشل "npx prisma"/"npx tsx" وقت التشغيل بحثًا عن رابط محلي غير موجود.
-COPY --from=builder --chown=bluepoint:nodejs /app/node_modules/.bin ./node_modules/.bin
+# نسخ node_modules كاملة بدل قائمة حزم منتقاة يدويًا: القائمة الجزئية كانت
+# تفشل بشكل متكرر بـ"Cannot find module" لكل حزمة انتقالية جديدة يحتاجها
+# Prisma CLI أو tsx وقت التشغيل (مثل effect) ولم تكن مدرجة صراحة.
+COPY --from=builder --chown=bluepoint:nodejs /app/node_modules ./node_modules
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
