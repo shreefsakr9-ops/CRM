@@ -280,3 +280,37 @@ export async function changeOwnPassword(userId: string, current: string, next: s
     summary: 'تغيير كلمة المرور بواسطة المستخدم',
   });
 }
+
+/**
+ * التغيير الإجباري لكلمة المرور بعد أول تسجيل دخول (mustResetPassword=true).
+ * الهوية هنا مثبتة بالفعل عبر جلسة قائمة (getCurrentUser) — لا حاجة لرمز
+ * إيميل ولا لكلمة المرور الحالية، على عكس resetPassword() و changeOwnPassword().
+ */
+export async function completeForcedPasswordReset(userId: string, next: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw BadRequest('المستخدم غير موجود');
+  if (!user.mustResetPassword) {
+    throw BadRequest('لا يوجد تغيير إجباري معلّق لكلمة المرور');
+  }
+  const strengthError = validatePasswordStrength(next);
+  if (strengthError) throw BadRequest(strengthError);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      passwordHash: await hashPassword(next),
+      mustResetPassword: false,
+      passwordChangedAt: new Date(),
+      failedLoginCount: 0,
+      lockedUntil: null,
+    },
+  });
+  await audit({
+    userId,
+    action: 'PASSWORD_RESET',
+    module: 'users',
+    entityType: 'USER',
+    entityId: userId,
+    summary: 'تغيير كلمة المرور الإجباري بعد أول تسجيل دخول',
+  });
+}

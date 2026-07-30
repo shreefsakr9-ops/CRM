@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { newSession, login, type Session } from './browser';
 import { seedE2EData, prisma, USERS, E2E_PASSWORD, type E2EData } from './fixtures';
+import { hashPassword } from '../../src/server/auth/password';
 
 /**
  * ما تفحصه هذه الاختبارات لا يمكن لاختبارات الوحدة أن تفحصه: اختبار الوحدة
@@ -101,6 +102,62 @@ describe('تسجيل الدخول', () => {
       } finally {
         await reused.close();
       }
+    } finally {
+      await s.close();
+    }
+  });
+});
+
+describe('التغيير الإجباري لكلمة المرور بعد أول تسجيل دخول', () => {
+  // خلل حقيقي وقع: الصفحة كانت تعامل forced=1 كأنها رابط الاستعادة عبر
+  // الإيميل، فترفض دائمًا بلا token برسالة «الرابط ناقص أو غير صالح» رغم أن
+  // المستخدم لديه جلسة صالحة بالفعل. مستخدم مخصص هنا حتى لا يتأثر بتغيير
+  // كلمة المرور أي اختبار آخر يستخدم مستخدمي fixtures.ts المشتركين.
+  const email = 'e2e.forced-reset@bluepoint.local';
+  const initialPassword = 'ForcedReset#Initial1';
+
+  it('يعتمد على الجلسة الحالية بلا token ويصل للوحة التحكم', async () => {
+    const role = await prisma.role.findUniqueOrThrow({ where: { key: 'SALES_AGENT' } });
+    const user = await prisma.user.upsert({
+      where: { email },
+      create: {
+        email,
+        name: 'اختبار التغيير الإجباري',
+        passwordHash: await hashPassword(initialPassword),
+        roleId: role.id,
+        mustResetPassword: true,
+      },
+      update: {
+        passwordHash: await hashPassword(initialPassword),
+        roleId: role.id,
+        isActive: true,
+        deletedAt: null,
+        mustResetPassword: true,
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+      },
+    });
+
+    const s = await newSession();
+    try {
+      await login(s, email, initialPassword);
+      expect(new URL(s.page.url()).pathname).toBe('/reset-password');
+      expect(new URL(s.page.url()).searchParams.get('forced')).toBe('1');
+
+      // لا رسالة «رابط ناقص»، والزر غير معطَّل — الاعتماد على الجلسة لا token.
+      expect(await s.page.content()).not.toContain('الرابط ناقص أو غير صالح');
+      expect(await s.page.isDisabled('button[type="submit"]')).toBe(false);
+
+      const newPassword = 'ForcedReset#2026';
+      await s.page.fill('input[name="password"]', newPassword);
+      await s.page.fill('input[name="confirm"]', newPassword);
+      await Promise.all([
+        s.page.waitForURL((url) => url.pathname === '/dashboard', { timeout: 30_000 }),
+        s.page.click('button[type="submit"]'),
+      ]);
+
+      const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(updated.mustResetPassword).toBe(false);
     } finally {
       await s.close();
     }

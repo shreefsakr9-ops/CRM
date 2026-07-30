@@ -7,7 +7,9 @@ import {
   completeTwoFactorLogin,
   requestPasswordReset,
   resetPassword,
+  completeForcedPasswordReset,
 } from '@/server/services/auth-service';
+import { getCurrentUser } from '@/server/auth/session';
 import { AppError } from '@/server/auth/guard';
 
 const loginSchema = z.object({
@@ -102,4 +104,40 @@ export async function resetPasswordAction(
     throw e;
   }
   redirect('/login?reset=1');
+}
+
+const forcedResetSchema = z
+  .object({
+    password: z.string().min(10, 'كلمة المرور يجب ألا تقل عن ١٠ أحرف'),
+    confirm: z.string(),
+  })
+  .refine((d) => d.password === d.confirm, {
+    message: 'كلمتا المرور غير متطابقتين',
+    path: ['confirm'],
+  });
+
+/**
+ * التغيير الإجباري بعد أول تسجيل دخول (forced=1) — الهوية مثبتة عبر الجلسة
+ * الحالية، بلا رمز إيميل وبلا طلب كلمة المرور الحالية.
+ */
+export async function forcedPasswordResetAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: 'الجلسة منتهية — سجّل الدخول من جديد' };
+
+  const parsed = forcedResetSchema.safeParse({
+    password: formData.get('password'),
+    confirm: formData.get('confirm'),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'بيانات غير صالحة' };
+
+  try {
+    await completeForcedPasswordReset(user.id, parsed.data.password);
+  } catch (e) {
+    if (e instanceof AppError) return { error: e.message };
+    throw e;
+  }
+  redirect('/dashboard');
 }
