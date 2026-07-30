@@ -1,5 +1,9 @@
 # Blue Point OS — Reverse Proxy مع HTTPS تلقائي (Let's Encrypt)
 
+{
+	default_sni {$DOMAIN}
+}
+
 {$DOMAIN} {
 	encode zstd gzip
 
