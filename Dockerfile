@@ -54,6 +54,7 @@ COPY --from=builder /app/prisma ./prisma
 # Prisma CLI أو tsx وقت التشغيل (مثل effect) ولم تكن مدرجة صراحة.
 COPY --from=builder --chown=bluepoint:nodejs /app/node_modules ./node_modules
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
