@@ -339,8 +339,13 @@ export async function financialReport(range: DateRange) {
     prisma.service.findMany({ select: { id: true, nameAr: true } }),
   ]);
 
+  // مجموع كل المصروفات غير المحذوفة ضمن الفترة — بلا أي تصفية بالتصنيف
+  // (Expense.category لا يميّز مباشر/غير مباشر أصلًا؛ التصنيفات كلها تشغيلية:
+  // FREELANCER, PRODUCTION, TRANSPORTATION, TOOLS, MEDIA_SPEND, PRINTING, OTHER).
   const totalExpensesMinor = expenses.reduce((s, e) => s + Number(e._sum.amountMinor ?? 0n), 0);
   const collectedMinor = Number(collected._sum.amountMinor ?? 0n);
+  // صافي الربح = المحصَّل − المصروفات المباشرة، لنفس نطاق التاريخ [from, to].
+  const netProfitMinor = collectedMinor - totalExpensesMinor;
 
   // ربحية المشاريع — الإيراد المعترف به مقابل التكاليف المباشرة.
   const projects = await prisma.project.findMany({
@@ -390,6 +395,7 @@ export async function financialReport(range: DateRange) {
     recurringValueMinor: Number(recurring._sum.valueMinor ?? 0n),
     recurringCount: recurring._count._all,
     expensesMinor: totalExpensesMinor,
+    netProfitMinor,
     byClient: byClient
       .map((r) => {
         const c = clients.find((x) => x.id === r.clientId);

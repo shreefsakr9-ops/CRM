@@ -49,6 +49,7 @@ interface FinancialReport {
   recurringValueMinor: number;
   recurringCount: number;
   expensesMinor: number;
+  netProfitMinor: number;
   byClient: { label: string; value: number; collected: number }[];
   byService: { label: string; value: number }[];
   byCurrency: { label: string; value: number }[];
@@ -385,10 +386,10 @@ export function ReportsClient({
             />
             <KpiCard label="المصروفات المباشرة" value={formatMoney(financial.expensesMinor)} icon="CreditCard" tone="warn" />
             <KpiCard
-              label="صافي التدفق (محصَّل − مصروفات)"
-              value={formatMoney(financial.collectedMinor - financial.expensesMinor)}
-              icon="TrendingUp"
-              tone={financial.collectedMinor - financial.expensesMinor >= 0 ? 'ok' : 'danger'}
+              label="صافي الربح (محصَّل − مصروفات مباشرة)"
+              value={formatMoney(financial.netProfitMinor)}
+              icon="PiggyBank"
+              tone={financial.netProfitMinor >= 0 ? 'ok' : 'danger'}
             />
           </KpiGrid>
 
