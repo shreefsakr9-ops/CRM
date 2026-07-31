@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Pencil } from 'lucide-react';
-import { requirePermission, can } from '@/server/auth/guard';
+import { requireUser, can } from '@/server/auth/guard';
 import { findOr404 } from '@/server/auth/page-guard';
 import { getTask, taskFormOptions } from '@/server/services/tasks';
 import { PageHeader } from '@/components/page-header';
@@ -29,7 +29,9 @@ export async function generateMetadata({
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requirePermission('tasks', 'view');
+  // لا تحقق مسبق من صلاحية «view» هنا: getTask() تتولى ذلك، بما يشمل حالة
+  // الإشارة (@) التي تمنح قراءة هذا السجل بعينه حتى خارج نطاق المستخدم.
+  const user = await requireUser();
   const [task, options] = await Promise.all([findOr404(() => getTask(id)), taskFormOptions()]);
 
   const blocking = task.dependencies.filter(

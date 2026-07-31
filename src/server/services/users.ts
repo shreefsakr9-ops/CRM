@@ -270,6 +270,70 @@ export async function updateRolePermissions(input: unknown) {
   });
 }
 
+/* ── صلاحيات فردية إضافية لكل مستخدم (فوق صلاحيات دوره) ───── */
+
+export async function getUserPermissionOverrides(userId: string) {
+  await requirePermission('roles', 'manage');
+  return prisma.userPermissionOverride.findMany({ where: { userId } });
+}
+
+const overrideUpdateSchema = z.object({
+  userId: z.string(),
+  overrides: z.array(
+    z.object({
+      module: z.enum(MODULES),
+      action: z.enum(ACTIONS),
+      scope: z.enum(['OWN', 'TEAM', 'ALL']),
+      allow: z.boolean(),
+    }),
+  ),
+});
+
+export async function updateUserPermissionOverrides(input: unknown) {
+  const actor = await requirePermission('roles', 'manage');
+  const { userId, overrides } = overrideUpdateSchema.parse(input);
+
+  // منع قفل الأدمن نفسه خارج صفحة إدارة الصلاحيات بالخطأ.
+  if (actor.id === userId) {
+    throw BadRequest('لا يمكنك تعديل صلاحياتك الإضافية الشخصية — اطلب من أدمن آخر');
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: userId } });
+  if (!target || target.deletedAt) throw NotFound('المستخدم غير موجود');
+
+  const before = await prisma.userPermissionOverride.findMany({ where: { userId } });
+
+  await prisma.$transaction([
+    prisma.userPermissionOverride.deleteMany({ where: { userId } }),
+    prisma.userPermissionOverride.createMany({
+      data: overrides.map((o) => ({
+        userId,
+        module: o.module,
+        action: o.action,
+        scope: o.scope as Scope,
+        allow: o.allow,
+      })),
+      skipDuplicates: true,
+    }),
+  ]);
+
+  // تُطبَّق فورًا — نفس منطق تغيير صلاحيات الدور.
+  await revokeAllSessions(userId);
+
+  await audit({
+    userId: actor.id,
+    action: 'PERMISSION_CHANGE',
+    module: 'users',
+    entityType: 'USER',
+    entityId: userId,
+    summary: `تعديل الصلاحيات الإضافية للمستخدم ${target.email}`,
+    oldValue: before.map((o) => `${o.module}.${o.action}:${o.scope}:${o.allow ? 'allow' : 'deny'}`).sort(),
+    newValue: overrides
+      .map((o) => `${o.module}.${o.action}:${o.scope}:${o.allow ? 'allow' : 'deny'}`)
+      .sort(),
+  });
+}
+
 export async function updateOwnProfile(
   userId: string,
   input: { name: string; phone?: string; locale: 'ar' | 'en'; timezone: string },

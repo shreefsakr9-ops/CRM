@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Pencil, Phone, MessageCircle, Mail } from 'lucide-react';
-import { requirePermission, can } from '@/server/auth/guard';
+import { requireUser, can } from '@/server/auth/guard';
 import { findOr404 } from '@/server/auth/page-guard';
 import { getLead, leadFormOptions } from '@/server/services/leads';
 import { PageHeader } from '@/components/page-header';
@@ -30,7 +30,9 @@ export async function generateMetadata({
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requirePermission('leads', 'view');
+  // لا تحقق مسبق من صلاحية «view» هنا: getLead() تتولى ذلك، بما يشمل حالة
+  // الإشارة (@) التي تمنح قراءة هذا السجل بعينه حتى بلا صلاحية leads أصلًا.
+  const user = await requireUser();
   const [lead, options] = await Promise.all([findOr404(() => getLead(id)), leadFormOptions()]);
   const showMoney = lead.estimatedValueMinor !== null;
 

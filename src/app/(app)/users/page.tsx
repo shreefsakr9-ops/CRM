@@ -38,6 +38,7 @@ export default async function UsersPage({
         roles={roles}
         departments={departments}
         canManage={can(user, 'users', 'manage')}
+        canManagePermissions={can(user, 'roles', 'manage')}
         currentUserId={user.id}
       />
     </div>

@@ -6,6 +6,7 @@ import {
   requirePermission,
   requireUser,
   can,
+  scopeOf,
   scopeWhere,
   NotFound,
   BadRequest,
@@ -14,6 +15,7 @@ import {
 import { audit, diff } from './audit';
 import { notify } from './notifications';
 import { recalcProgress } from './projects';
+import { isMentionedOn } from './mentions';
 
 const OWNER_FIELDS = ['creatorId', 'reviewerId'];
 const assigneeCondition = (userId: string) => [{ assignees: { some: { userId } } }];
@@ -119,12 +121,26 @@ export async function listTasks(filters: {
 }
 
 export async function getTask(id: string) {
-  const user = await requirePermission('tasks', 'view');
+  const user = await requireUser();
+  const hasView = can(user, 'tasks', 'view');
+
+  // إشارة (@) صريحة لهذا المستخدم في تعليق على هذه المهمة تمنحه قراءتها
+  // بعينها، حتى لو كانت خارج نطاق دوره أو لم يملك صلاحية «view» على المهام
+  // أصلًا — بدون ذلك يفشل فتح إشعار الإشارة برسالة رفض أو «غير موجودة».
+  let scopeCondition: Record<string, unknown> = {};
+  if (!hasView || scopeOf(user, 'tasks') !== 'ALL') {
+    const mentioned = await isMentionedOn(user.id, 'TASK', id);
+    if (!mentioned) {
+      if (!hasView) throw Forbidden('ليس لديك صلاحية «view» على «tasks»');
+      scopeCondition = scopeWhere(user, 'tasks', OWNER_FIELDS, assigneeCondition(user.id));
+    }
+  }
+
   const task = await prisma.task.findFirst({
     where: {
       id,
       deletedAt: null,
-      ...scopeWhere(user, 'tasks', OWNER_FIELDS, assigneeCondition(user.id)),
+      ...scopeCondition,
     },
     include: {
       project: { select: { id: true, name: true, code: true } },

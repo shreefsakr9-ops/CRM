@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { FileDown, Eye, Pencil } from 'lucide-react';
-import { requirePermission, can } from '@/server/auth/guard';
+import { requireUser, can } from '@/server/auth/guard';
 import { findOr404 } from '@/server/auth/page-guard';
 import { getQuotation } from '@/server/services/quotations';
 import { PageHeader } from '@/components/page-header';
@@ -28,7 +28,10 @@ export async function generateMetadata({
 
 export default async function QuotationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requirePermission('quotations', 'view');
+  // لا تحقق مسبق من صلاحية «view» هنا: getQuotation() تتولى ذلك، بما يشمل
+  // حالة الإشارة (@) التي تمنح قراءة هذا السجل بعينه حتى بلا صلاحية
+  // quotations أصلًا.
+  const user = await requireUser();
   const q = await findOr404(() => getQuotation(id));
   const money = (v: bigint) => formatMoney(v, q.currency);
 

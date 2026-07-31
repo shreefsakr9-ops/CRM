@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { requirePermission, can } from '@/server/auth/guard';
+import { requirePermission, can, scopeOf, Forbidden } from '@/server/auth/guard';
+import { scopeAtLeast } from '@/server/auth/permissions';
 import {
   salesReport,
   operationsReport,
@@ -21,6 +22,14 @@ export default async function ReportsPage({
 }) {
   const sp = await searchParams;
   const user = await requirePermission('reports', 'view');
+  // تقارير هذه الصفحة كلها محسوبة على مستوى الشركة/الفريق بلا تقييد بنطاق
+  // OWN (لا يوجد دعم لتصفية «سجلاتي فقط» في أي من دوال reports.ts) — فمن
+  // يملك reports.view بنطاق OWN فقط (منفذ فردي) لا يحق له فتح الصفحة رغم
+  // امتلاكه الصلاحية اسميًا؛ التحقق هنا دفاع إضافي حتى مع تخصيص صلاحيات فردية
+  // مستقبلًا (User Permission Overrides) بنطاق أضيق من TEAM.
+  if (!scopeAtLeast(scopeOf(user, 'reports'), 'TEAM')) {
+    throw Forbidden('صلاحيتك على التقارير لا تشمل عرض هذه الصفحة');
+  }
   const range = parseRange(sp.from, sp.to);
 
   const canFinance = can(user, 'reports', 'view_financial');

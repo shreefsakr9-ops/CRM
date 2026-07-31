@@ -3,12 +3,19 @@ import { mockSession, actAs, createTestUser, prisma, resetBusinessData } from '.
 
 mockSession();
 
-const { listLeads, createLead } = await import('@/server/services/leads');
+const { listLeads, createLead, getLead } = await import('@/server/services/leads');
 const { listInvoices, createInvoice } = await import('@/server/services/invoices');
 const { getProject, createProject, updateProject } = await import('@/server/services/projects');
 const { getClient, createClient } = await import('@/server/services/clients');
+const { getTask, createTask, addComment } = await import('@/server/services/tasks');
+const { getQuotation, createQuotation } = await import('@/server/services/quotations');
+const { buildDashboard } = await import('@/server/services/dashboard');
 const { AppError } = await import('@/server/auth/guard');
-const { listUsers } = await import('@/server/services/users');
+const {
+  listUsers,
+  getUserPermissionOverrides,
+  updateUserPermissionOverrides,
+} = await import('@/server/services/users');
 // عميل التطبيق نفسه (لا عميل الاختبارات) لأن إعداد الحذف مضبوط عليه.
 const { prisma: appPrisma } = await import('@/server/db');
 
@@ -369,5 +376,173 @@ describe('سجل التدقيق إضافة فقط (مفروض من قاعدة ا
       },
     });
     expect(await appPrisma.auditLog.count()).toBe(before + 1);
+  });
+});
+
+describe('الإشارة (@) تمنح وصولًا لسجل واحد بعينه لا للوحدة كاملة', () => {
+  /**
+   * الخلل الحقيقي: صفحة الإشعار كانت تعامل الوصول عبر صلاحية/نطاق المستخدم
+   * المعتادين فقط، فيُرفض المُشار إليه برسالة «لا صلاحية» أو 404 رغم أن أحدًا
+   * يملك صلاحية الوصول أشار إليه صراحة في تعليق على هذا السجل بعينه.
+   */
+  it('مصمم مُشار إليه في تعليق على مهمة خارج نطاقه (OWN) يستطيع فتحها', async () => {
+    const designer = await actAs(DESIGNER);
+    await actAs(ADMIN);
+    const task = await createTask({
+      title: 'مهمة خارج نطاق المصمم',
+      priority: 'MEDIUM',
+      status: 'TODO',
+      requiresApproval: false,
+      assigneeIds: [],
+      checklist: [],
+      dependsOnIds: [],
+    } as never);
+
+    await addComment('TASK', task.id, `مرحبًا @${designer.name}`, [designer.id]);
+
+    await actAs(DESIGNER);
+    const fetched = await getTask(task.id);
+    expect(fetched.id).toBe(task.id);
+  });
+
+  it('مصمم غير مُشار إليه في مهمة خارج نطاقه يُرفض كالمعتاد', async () => {
+    await actAs(ADMIN);
+    const task = await createTask({
+      title: 'مهمة أخرى بلا إشارة',
+      priority: 'MEDIUM',
+      status: 'TODO',
+      requiresApproval: false,
+      assigneeIds: [],
+      checklist: [],
+      dependsOnIds: [],
+    } as never);
+
+    await actAs(DESIGNER);
+    await expect(getTask(task.id)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('مصمم مُشار إليه في تعليق على عميل محتمل رغم عدم امتلاكه صلاحية leads أصلًا', async () => {
+    const designer = await actAs(DESIGNER);
+    await actAs(ADMIN);
+    const lead = await createLead({
+      fullName: 'عميل محتمل للإشارة',
+      phone: '01000000077',
+      estimatedValue: 0,
+      currency: 'EGP',
+      priority: 'LOW',
+      score: 0,
+      nextFollowUpAt: new Date(Date.now() + 86_400_000).toISOString(),
+    } as never);
+
+    // بلا صلاحية leads إطلاقًا يفشل الوصول بـ403 لا 404 — تحقّق أولًا.
+    await actAs(DESIGNER);
+    await expect(getLead(lead.id)).rejects.toMatchObject({ status: 403 });
+
+    await actAs(ADMIN);
+    await addComment('LEAD', lead.id, `انتبه @${designer.name}`, [designer.id]);
+
+    await actAs(DESIGNER);
+    const fetched = await getLead(lead.id);
+    expect(fetched.id).toBe(lead.id);
+  });
+});
+
+describe('لوحة التحكم: قسم العمليات مقيّد بنطاق TEAM/ALL لا بمجرد امتلاك الصلاحية', () => {
+  /**
+   * الخلل الحقيقي: الشرط كان `can(user,'projects','view') && can(user,'tasks','view')`
+   * وهو صحيح حتى لنطاق OWN، بينما operationsBlock تحسب أرقامًا على مستوى
+   * الشركة كاملة بلا أي تقييد بنطاق المستخدم.
+   */
+  it('المصمم (نطاق OWN على المشاريع والمهام) لا يرى قسم العمليات', async () => {
+    const designer = await actAs(DESIGNER);
+    const dashboard = await buildDashboard(designer);
+    expect(dashboard.operations).toBeUndefined();
+  });
+
+  it('مدير المبيعات (نطاق TEAM) يرى قسم العمليات', async () => {
+    const manager = await actAs(MANAGER);
+    const dashboard = await buildDashboard(manager);
+    expect(dashboard.operations).toBeDefined();
+  });
+});
+
+describe('صلاحيات فردية إضافية فوق الدور (UserPermissionOverride)', () => {
+  it('الأدمن يمنح صلاحية إضافية لمستخدم بعينه فتعمل فعليًا', async () => {
+    const designer = await actAs(DESIGNER);
+    await actAs(ADMIN);
+    const quotationBefore = await createQuotation({
+      clientId,
+      issueDate: new Date().toISOString(),
+      expiryDate: new Date(Date.now() + 14 * 86_400_000).toISOString(),
+      currency: 'EGP',
+      items: [{ nameAr: 'بند سابق', quantity: 1, unitPrice: 10 }],
+    } as never);
+
+    // المصمم بلا أي صلاحية quotations افتراضيًا (وبلا إشارة) — تحقّق أولًا.
+    await actAs(DESIGNER);
+    await expect(getQuotation(quotationBefore.id)).rejects.toMatchObject({ status: 403 });
+
+    await actAs(ADMIN);
+    // عرض السعر مستند مالي بالكامل — يتطلب view_financial أيضًا لا view فقط،
+    // فالأدمن يمنح الاثنين معًا كما تفعل واجهة الصلاحيات الإضافية فعليًا.
+    await updateUserPermissionOverrides({
+      userId: designer.id,
+      overrides: [
+        { module: 'quotations', action: 'view', scope: 'ALL', allow: true },
+        { module: 'quotations', action: 'view_financial', scope: 'ALL', allow: true },
+      ],
+    });
+
+    const saved = await getUserPermissionOverrides(designer.id);
+    expect(saved).toContainEqual(
+      expect.objectContaining({ module: 'quotations', action: 'view', scope: 'ALL', allow: true }),
+    );
+    expect(saved).toContainEqual(
+      expect.objectContaining({ module: 'quotations', action: 'view_financial', scope: 'ALL', allow: true }),
+    );
+
+    const quotation = await createQuotation({
+      clientId,
+      issueDate: new Date().toISOString(),
+      expiryDate: new Date(Date.now() + 14 * 86_400_000).toISOString(),
+      currency: 'EGP',
+      items: [{ nameAr: 'بند', quantity: 1, unitPrice: 50 }],
+    } as never);
+
+    await actAs(DESIGNER);
+    const fetched = await getQuotation(quotation.id);
+    expect(fetched.id).toBe(quotation.id);
+
+    // تنظيف — لا يؤثر على اختبارات أخرى تعتمد على غياب صلاحية quotations للمصمم.
+    await actAs(ADMIN);
+    await updateUserPermissionOverrides({ userId: designer.id, overrides: [] });
+  });
+
+  it('الأدمن يمنع صراحةً صلاحية يمنحها الدور تحديدًا لمستخدم', async () => {
+    const sales1 = await actAs(SALES1);
+    await actAs(SALES1);
+    await expect(listLeads({})).resolves.toBeDefined();
+
+    await actAs(ADMIN);
+    await updateUserPermissionOverrides({
+      userId: sales1.id,
+      overrides: [{ module: 'leads', action: 'view', scope: 'OWN', allow: false }],
+    });
+
+    await actAs(SALES1);
+    await expect(listLeads({})).rejects.toMatchObject({ status: 403 });
+
+    // إزالة المنع حتى لا تتأثر بقية اختبارات هذا الملف التي تعتمد على وصول SALES1 لسجلاته.
+    await actAs(ADMIN);
+    await updateUserPermissionOverrides({ userId: sales1.id, overrides: [] });
+    await actAs(SALES1);
+    await expect(listLeads({})).resolves.toBeDefined();
+  });
+
+  it('لا يستطيع الأدمن تعديل صلاحياته الإضافية الشخصية (منع قفل النفس)', async () => {
+    const admin = await actAs(ADMIN);
+    await expect(
+      updateUserPermissionOverrides({ userId: admin.id, overrides: [] }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });

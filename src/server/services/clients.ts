@@ -2,8 +2,17 @@ import 'server-only';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
-import { requirePermission, can, scopeWhere, NotFound } from '@/server/auth/guard';
+import {
+  requirePermission,
+  requireUser,
+  can,
+  scopeOf,
+  scopeWhere,
+  NotFound,
+  Forbidden,
+} from '@/server/auth/guard';
 import { audit, diff } from './audit';
+import { isMentionedOn } from './mentions';
 
 const OWNER_FIELDS = ['accountManagerId', 'salesOwnerId', 'createdById'];
 
@@ -100,9 +109,22 @@ export async function listClients(filters: {
 }
 
 export async function getClient(id: string) {
-  const user = await requirePermission('clients', 'view');
+  const user = await requireUser();
+  const hasView = can(user, 'clients', 'view');
+
+  // إشارة (@) صريحة لهذا المستخدم في تعليق على هذا العميل تمنحه قراءته
+  // بعينه بصرف النظر عن نطاق دوره أو صلاحيته المعتادة على العملاء.
+  let scopeCondition: Record<string, unknown> = {};
+  if (!hasView || scopeOf(user, 'clients') !== 'ALL') {
+    const mentioned = await isMentionedOn(user.id, 'CLIENT', id);
+    if (!mentioned) {
+      if (!hasView) throw Forbidden('ليس لديك صلاحية «view» على «clients»');
+      scopeCondition = scopeWhere(user, 'clients', OWNER_FIELDS);
+    }
+  }
+
   const client = await prisma.client.findFirst({
-    where: { id, deletedAt: null, ...scopeWhere(user, 'clients', OWNER_FIELDS) },
+    where: { id, deletedAt: null, ...scopeCondition },
     include: {
       accountManager: { select: { id: true, name: true, avatarUrl: true } },
       salesOwner: { select: { id: true, name: true } },

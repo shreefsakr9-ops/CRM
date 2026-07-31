@@ -174,7 +174,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Grant[]> = {
     ['tasks', ['view', 'create', 'edit'], 'OWN'],
     ['approvals', ['view'], 'OWN'],
     ['files', ['view', 'create', 'edit'], 'OWN'],
-    ['reports', ['view'], 'OWN'],
     ['notifications', ['view', 'edit'], 'OWN'],
   ],
 
@@ -204,7 +203,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Grant[]> = {
     ['tasks', ['view', 'create', 'edit', 'assign'], 'OWN'],
     ['approvals', ['view'], 'OWN'],
     ['files', ['view', 'create', 'edit'], 'OWN'],
-    ['reports', ['view'], 'OWN'],
     ['notifications', ['view', 'edit'], 'OWN'],
   ],
 
@@ -215,7 +213,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Grant[]> = {
     ['tasks', ['view', 'create', 'edit', 'assign'], 'OWN'],
     ['approvals', ['view'], 'OWN'],
     ['files', ['view', 'create', 'edit'], 'OWN'],
-    ['reports', ['view'], 'OWN'],
     ['notifications', ['view', 'edit'], 'OWN'],
   ],
 
@@ -226,7 +223,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Grant[]> = {
     ['tasks', ['view', 'create', 'edit', 'assign'], 'OWN'],
     ['approvals', ['view'], 'OWN'],
     ['files', ['view', 'create', 'edit'], 'OWN'],
-    ['reports', ['view'], 'OWN'],
     ['notifications', ['view', 'edit'], 'OWN'],
   ],
 
@@ -240,7 +236,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleKey, Grant[]> = {
     ['approvals', ['view'], 'OWN'],
     ['files', ['view', 'create', 'edit'], 'OWN'],
     ['expenses', ['view', 'create', 'edit', 'view_financial'], 'OWN'],
-    ['reports', ['view'], 'OWN'],
     ['notifications', ['view', 'edit'], 'OWN'],
   ],
 

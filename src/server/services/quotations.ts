@@ -4,7 +4,9 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
 import {
   requirePermission,
+  requireUser,
   can,
+  scopeOf,
   scopeWhere,
   NotFound,
   BadRequest,
@@ -13,6 +15,7 @@ import {
 import { audit } from './audit';
 import { nextNumber } from './numbering';
 import { computeDocument, splitInstallments, type DiscountKind } from './money';
+import { isMentionedOn } from './mentions';
 import { getSettings } from './settings';
 import { notify } from './notifications';
 
@@ -144,9 +147,22 @@ export async function listQuotations(filters: {
 }
 
 export async function getQuotation(id: string) {
-  const user = await requirePermission('quotations', 'view');
+  const user = await requireUser();
+  const hasView = can(user, 'quotations', 'view');
+
+  // إشارة (@) صريحة لهذا المستخدم في تعليق على عرض السعر هذا تمنحه قراءته
+  // بعينه بصرف النظر عن نطاق دوره أو صلاحيته المعتادة على عروض الأسعار.
+  let scopeCondition: Record<string, unknown> = {};
+  if (!hasView || scopeOf(user, 'quotations') !== 'ALL') {
+    const mentioned = await isMentionedOn(user.id, 'QUOTATION', id);
+    if (!mentioned) {
+      if (!hasView) throw Forbidden('ليس لديك صلاحية «view» على «quotations»');
+      scopeCondition = scopeWhere(user, 'quotations', OWNER_FIELDS);
+    }
+  }
+
   const quotation = await prisma.quotation.findFirst({
-    where: { id, deletedAt: null, ...scopeWhere(user, 'quotations', OWNER_FIELDS) },
+    where: { id, deletedAt: null, ...scopeCondition },
     include: {
       client: true,
       contact: true,

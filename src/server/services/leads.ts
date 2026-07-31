@@ -6,6 +6,7 @@ import {
   requirePermission,
   requireUser,
   can,
+  scopeOf,
   scopeWhere,
   NotFound,
   BadRequest,
@@ -13,6 +14,7 @@ import {
 } from '@/server/auth/guard';
 import { normalizeEmail, normalizePhone } from '@/lib/utils';
 import { audit, diff } from './audit';
+import { isMentionedOn } from './mentions';
 import { notify } from './notifications';
 import { getSettings } from './settings';
 
@@ -143,9 +145,23 @@ export async function listLeads(filters: LeadFilters) {
 }
 
 export async function getLead(id: string) {
-  const user = await requirePermission('leads', 'view');
+  const user = await requireUser();
+  const hasView = can(user, 'leads', 'view');
+
+  // إشارة (@) صريحة لهذا المستخدم في تعليق على هذا العميل المحتمل تمنحه
+  // قراءته بعينه بصرف النظر عن نطاق دوره أو صلاحيته المعتادة على العملاء
+  // المحتملين.
+  let scopeCondition: Record<string, unknown> = {};
+  if (!hasView || scopeOf(user, 'leads') !== 'ALL') {
+    const mentioned = await isMentionedOn(user.id, 'LEAD', id);
+    if (!mentioned) {
+      if (!hasView) throw Forbidden('ليس لديك صلاحية «view» على «leads»');
+      scopeCondition = scopeWhere(user, 'leads', OWNER_FIELDS);
+    }
+  }
+
   const lead = await prisma.lead.findFirst({
-    where: { id, ...scopeWhere(user, 'leads', OWNER_FIELDS) },
+    where: { id, ...scopeCondition },
     include: {
       source: true,
       assignedTo: { select: { id: true, name: true, avatarUrl: true, email: true } },

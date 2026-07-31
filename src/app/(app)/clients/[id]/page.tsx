@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { requirePermission, can } from '@/server/auth/guard';
+import { requireUser, can } from '@/server/auth/guard';
 import { findOr404 } from '@/server/auth/page-guard';
 import { getClient, clientFormOptions } from '@/server/services/clients';
 import { PageHeader } from '@/components/page-header';
@@ -29,7 +29,9 @@ export async function generateMetadata({
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requirePermission('clients', 'view');
+  // لا تحقق مسبق من صلاحية «view» هنا: getClient() تتولى ذلك، بما يشمل حالة
+  // الإشارة (@) التي تمنح قراءة هذا السجل بعينه حتى بلا صلاحية clients أصلًا.
+  const user = await requireUser();
   const [client, options] = await Promise.all([findOr404(() => getClient(id)), clientFormOptions()]);
 
   return (

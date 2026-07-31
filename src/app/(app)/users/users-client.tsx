@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, KeyRound, Ban, Pencil, Copy, ShieldOff } from 'lucide-react';
+import { UserPlus, KeyRound, Ban, Pencil, Copy, ShieldOff, ShieldPlus } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { Drawer, ConfirmDialog } from '@/components/ui/drawer';
 import { Avatar, Badge, Button, Checkbox, Field, Input, Select } from '@/components/ui/primitives';
@@ -15,6 +15,7 @@ import {
   resetTwoFactorAction,
   forceResetAction,
 } from './actions';
+import { PermissionOverridesEditor } from './permission-overrides-editor';
 
 interface Row {
   id: string;
@@ -44,18 +45,21 @@ export function UsersClient({
   roles,
   departments,
   canManage,
+  canManagePermissions,
   currentUserId,
 }: {
   users: Row[];
   roles: { id: string; key: string; nameAr: string }[];
   departments: { id: string; nameAr: string }[];
   canManage: boolean;
+  canManagePermissions: boolean;
   currentUserId: string;
 }) {
   const toast = useToast();
   const router = useRouter();
   const [editing, setEditing] = React.useState<Row | 'new' | null>(null);
   const [confirmOff, setConfirmOff] = React.useState<Row | null>(null);
+  const [overridesFor, setOverridesFor] = React.useState<Row | null>(null);
   const [pending, setPending] = React.useState(false);
 
   const columns: Column<Row>[] = [
@@ -130,7 +134,7 @@ export function UsersClient({
         </div>
       ),
     },
-    ...(canManage
+    ...(canManage || canManagePermissions
       ? [
           {
             key: 'actions',
@@ -138,25 +142,40 @@ export function UsersClient({
             align: 'end' as const,
             render: (r: Row) => (
               <div className="flex justify-end gap-1">
-                <Button variant="ghost" size="sm" onClick={() => setEditing(r)} type="button">
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={async () => {
-                    const res = await forceResetAction(r.id);
-                    if (res.ok && res.data)
-                      toast.success('تم إنشاء كلمة مرور مؤقتة', res.data.temporaryPassword);
-                    else if (!res.ok) toast.error(res.error);
-                    router.refresh();
-                  }}
-                  type="button"
-                  title="إعادة تعيين كلمة المرور"
-                >
-                  <KeyRound className="h-3.5 w-3.5" />
-                </Button>
-                {r.twoFactorEnabled && (
+                {canManage && (
+                  <Button variant="ghost" size="sm" onClick={() => setEditing(r)} type="button">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {canManagePermissions && r.id !== currentUserId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setOverridesFor(r)}
+                    type="button"
+                    title="صلاحيات إضافية فوق الدور"
+                  >
+                    <ShieldPlus className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {canManage && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      const res = await forceResetAction(r.id);
+                      if (res.ok && res.data)
+                        toast.success('تم إنشاء كلمة مرور مؤقتة', res.data.temporaryPassword);
+                      else if (!res.ok) toast.error(res.error);
+                      router.refresh();
+                    }}
+                    type="button"
+                    title="إعادة تعيين كلمة المرور"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+                {canManage && r.twoFactorEnabled && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -172,7 +191,7 @@ export function UsersClient({
                     <ShieldOff className="h-3.5 w-3.5 text-warn" />
                   </Button>
                 )}
-                {r.isActive && r.id !== currentUserId && (
+                {canManage && r.isActive && r.id !== currentUserId && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -240,6 +259,25 @@ export function UsersClient({
                 toast.success('تم حفظ التعديلات');
               }
               setEditing(null);
+              router.refresh();
+            }}
+          />
+        )}
+      </Drawer>
+
+      <Drawer
+        open={overridesFor !== null}
+        onClose={() => setOverridesFor(null)}
+        title="صلاحيات إضافية"
+        description={overridesFor ? `فوق دور «${overridesFor.role.nameAr}»` : undefined}
+      >
+        {overridesFor && (
+          <PermissionOverridesEditor
+            key={overridesFor.id}
+            userId={overridesFor.id}
+            userName={overridesFor.name}
+            onSaved={() => {
+              setOverridesFor(null);
               router.refresh();
             }}
           />

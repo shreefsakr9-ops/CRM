@@ -2,12 +2,22 @@ import 'server-only';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/server/db';
-import { requirePermission, can, scopeWhere, NotFound, BadRequest } from '@/server/auth/guard';
+import {
+  requirePermission,
+  requireUser,
+  can,
+  scopeOf,
+  scopeWhere,
+  NotFound,
+  BadRequest,
+  Forbidden,
+} from '@/server/auth/guard';
 import { audit, diff } from './audit';
 import { nextNumber } from './numbering';
 import { notify } from './notifications';
 import { getSettings } from './settings';
 import { projectProfit } from './money';
+import { isMentionedOn } from './mentions';
 
 const OWNER_FIELDS = ['ownerId', 'accountManagerId', 'createdById'];
 
@@ -106,12 +116,25 @@ export async function listProjects(filters: {
 }
 
 export async function getProject(id: string) {
-  const user = await requirePermission('projects', 'view');
+  const user = await requireUser();
+  const hasView = can(user, 'projects', 'view');
+
+  // إشارة (@) صريحة لهذا المستخدم في تعليق على هذا المشروع تمنحه قراءته
+  // بعينه بصرف النظر عن نطاق دوره أو صلاحيته المعتادة على المشاريع.
+  let scopeCondition: Record<string, unknown> = {};
+  if (!hasView || scopeOf(user, 'projects') !== 'ALL') {
+    const mentioned = await isMentionedOn(user.id, 'PROJECT', id);
+    if (!mentioned) {
+      if (!hasView) throw Forbidden('ليس لديك صلاحية «view» على «projects»');
+      scopeCondition = scopeWhere(user, 'projects', OWNER_FIELDS, memberCondition(user.id));
+    }
+  }
+
   const project = await prisma.project.findFirst({
     where: {
       id,
       deletedAt: null,
-      ...scopeWhere(user, 'projects', OWNER_FIELDS, memberCondition(user.id)),
+      ...scopeCondition,
     },
     include: {
       client: { select: { id: true, legalName: true, brandName: true } },

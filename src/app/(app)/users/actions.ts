@@ -7,6 +7,8 @@ import {
   deactivateUser,
   forcePasswordReset,
   updateRolePermissions,
+  getUserPermissionOverrides,
+  updateUserPermissionOverrides,
   userInputSchema,
 } from '@/server/services/users';
 import { resetUserTwoFactor } from '@/server/services/two-factor';
@@ -67,6 +69,20 @@ export async function updateRolePermissionsAction(raw: unknown): Promise<Result>
   return guard(async () => {
     await updateRolePermissions(raw);
     revalidatePath('/settings/roles');
+    return undefined;
+  });
+}
+
+export async function getUserPermissionOverridesAction(
+  userId: string,
+): Promise<Result<{ module: string; action: string; scope: string; allow: boolean }[]>> {
+  return guard(async () => getUserPermissionOverrides(userId));
+}
+
+export async function updateUserPermissionOverridesAction(raw: unknown): Promise<Result> {
+  return guard(async () => {
+    await updateUserPermissionOverrides(raw);
+    revalidatePath('/users');
     return undefined;
   });
 }

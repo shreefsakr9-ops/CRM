@@ -1,7 +1,7 @@
 import 'server-only';
 import { prisma, Prisma } from '@/server/db';
 import { can, scopeWhere, scopeOf } from '@/server/auth/guard';
-import type { ModuleKey } from '@/server/auth/permissions';
+import { scopeAtLeast, type ModuleKey } from '@/server/auth/permissions';
 import type { CurrentUser } from '@/server/auth/session';
 import { weightedForecast } from './money';
 
@@ -99,7 +99,13 @@ export async function buildDashboard(user: CurrentUser): Promise<DashboardData> 
   if (can(user, 'leads', 'view') || can(user, 'deals', 'view')) {
     data.sales = await salesBlock(user, now, startOfMonth);
   }
-  if (can(user, 'projects', 'view') && can(user, 'tasks', 'view')) {
+  // operationsBlock تُحسب على مستوى الشركة كاملة بلا أي تقييد بنطاق المستخدم
+  // (انظر تعليق داخل الدالة) — عرضها لمن نطاقه OWN فقط (منفذ فردي) يكشف له
+  // بيانات تشغيلية لا يخصه دوره برؤيتها، فالشرط هنا نطاق لا مجرد وجود الصلاحية.
+  if (
+    scopeAtLeast(scopeOf(user, 'projects'), 'TEAM') &&
+    scopeAtLeast(scopeOf(user, 'tasks'), 'TEAM')
+  ) {
     data.operations = await operationsBlock(user, now);
   }
   return data;
@@ -446,6 +452,11 @@ async function executiveBlock(
   };
 }
 
+/**
+ * أرقام على مستوى الشركة كاملة بلا تقييد بنطاق `user` — مقصودة فقط لمن يملك
+ * نطاق TEAM أو ALL على المشاريع والمهام (تُفحص في buildDashboard قبل الاستدعاء).
+ * `user` تبقى معامَلًا لتوقيع موحّد مع بقية الكتل رغم عدم استخدامها في الاستعلامات.
+ */
 async function operationsBlock(user: CurrentUser, now: Date): Promise<OperationsBlock> {
   const [
     activeProjects,
