@@ -134,6 +134,7 @@ export const EXPENSE_CATEGORY: Record<string, Pair> = {
   TOOLS: { ar: 'أدوات واشتراكات', en: 'Tools', tone: 'neutral' },
   MEDIA_SPEND: { ar: 'إنفاق إعلاني', en: 'Media spend', tone: 'neutral' },
   PRINTING: { ar: 'طباعة', en: 'Printing', tone: 'neutral' },
+  SALARIES: { ar: 'رواتب', en: 'Salaries', tone: 'neutral' },
   OTHER: { ar: 'أخرى', en: 'Other', tone: 'neutral' },
 };
 

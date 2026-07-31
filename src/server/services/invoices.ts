@@ -475,7 +475,7 @@ export const expenseSchema = z.object({
   projectId: z.string().optional().nullable(),
   clientId: z.string().optional().nullable(),
   category: z
-    .enum(['FREELANCER', 'PRODUCTION', 'TRANSPORTATION', 'TOOLS', 'MEDIA_SPEND', 'PRINTING', 'OTHER'])
+    .enum(['FREELANCER', 'PRODUCTION', 'TRANSPORTATION', 'TOOLS', 'MEDIA_SPEND', 'PRINTING', 'SALARIES', 'OTHER'])
     .default('OTHER'),
   description: z.string().trim().min(2, 'الوصف مطلوب'),
   vendor: z.string().trim().optional().nullable(),

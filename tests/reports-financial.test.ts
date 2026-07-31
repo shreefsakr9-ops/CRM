@@ -109,3 +109,121 @@ describe('صافي الربح في التقرير المالي (المحصَّل
     expect(report.netProfitMinor).toBe(report.collectedMinor - report.expensesMinor);
   });
 });
+
+describe('كل تصنيفات المصروفات تُحتسب بلا استثناء ضمن المصروفات المباشرة', () => {
+  it('تصنيف "أخرى" (OTHER) يُحتسب فعليًا — تحقّق مباشر لا افتراض', async () => {
+    await actAs(ADMIN);
+    const client = await createClient({
+      legalName: 'عميل اختبار تصنيف أخرى',
+      type: 'COMPANY',
+      currency: 'EGP',
+      status: 'ACTIVE',
+    } as never);
+    const today = new Date().toISOString();
+
+    const range = reports.parseRange(
+      new Date(Date.now() - 86_400_000).toISOString(),
+      new Date().toISOString(),
+    );
+    const before = await reports.financialReport(range);
+    expect(before.expensesMinor).toBe(0);
+
+    await createExpense({
+      clientId: client.id,
+      category: 'OTHER',
+      description: 'مصروف تجريبي - تصنيف أخرى',
+      amount: 500,
+      currency: 'EGP',
+      spentOn: today,
+    } as never);
+
+    const after = await reports.financialReport(range);
+    expect(after.expensesMinor).toBe(50_000); // 500 EGP بالقرش
+    expect(after.expensesMinor - before.expensesMinor).toBe(50_000);
+    expect(after.expensesByCategory).toContainEqual({ label: 'OTHER', value: 500 });
+  });
+
+  it('تصنيف "رواتب" (SALARIES) الجديد يُحتسب ضمن المصروفات وصافي الربح', async () => {
+    await actAs(ADMIN);
+    const client = await createClient({
+      legalName: 'عميل اختبار تصنيف رواتب',
+      type: 'COMPANY',
+      currency: 'EGP',
+      status: 'ACTIVE',
+    } as never);
+    const today = new Date().toISOString();
+
+    await recordPayment({
+      clientId: client.id,
+      amount: 20_000,
+      currency: 'EGP',
+      paidAt: today,
+      method: 'BANK_TRANSFER',
+    } as never);
+    await createExpense({
+      clientId: client.id,
+      category: 'SALARIES',
+      description: 'رواتب فريق شهر يوليو',
+      amount: 8_000,
+      currency: 'EGP',
+      spentOn: today,
+    } as never);
+
+    const range = reports.parseRange(
+      new Date(Date.now() - 86_400_000).toISOString(),
+      new Date().toISOString(),
+    );
+    const report = await reports.financialReport(range);
+
+    expect(report.expensesMinor).toBe(800_000); // 8,000 EGP بالقرش
+    expect(report.expensesByCategory).toContainEqual({ label: 'SALARIES', value: 8_000 });
+    expect(report.netProfitMinor).toBe(report.collectedMinor - report.expensesMinor);
+    expect(report.netProfitMinor).toBe(1_200_000); // (20,000 - 8,000) EGP بالقرش
+  });
+
+  it('كل تصنيف من التصنيفات الثمانية يُحتسب فرديًا بلا أي استثناء', async () => {
+    await actAs(ADMIN);
+    const client = await createClient({
+      legalName: 'عميل اختبار كل التصنيفات',
+      type: 'COMPANY',
+      currency: 'EGP',
+      status: 'ACTIVE',
+    } as never);
+    const today = new Date().toISOString();
+
+    const categories = [
+      'FREELANCER',
+      'PRODUCTION',
+      'TRANSPORTATION',
+      'TOOLS',
+      'MEDIA_SPEND',
+      'PRINTING',
+      'SALARIES',
+      'OTHER',
+    ] as const;
+
+    for (const category of categories) {
+      await createExpense({
+        clientId: client.id,
+        category,
+        description: `مصروف اختبار — ${category}`,
+        amount: 100,
+        currency: 'EGP',
+        spentOn: today,
+      } as never);
+    }
+
+    const range = reports.parseRange(
+      new Date(Date.now() - 86_400_000).toISOString(),
+      new Date().toISOString(),
+    );
+    const report = await reports.financialReport(range);
+
+    // ٨ تصنيفات × ١٠٠ جنيه = ٨٠٠ جنيه بالقرش — أي استثناء لتصنيف واحد يُسقط الرقم عن هذا.
+    expect(report.expensesMinor).toBe(80_000);
+    expect(report.expensesByCategory).toHaveLength(categories.length);
+    for (const category of categories) {
+      expect(report.expensesByCategory).toContainEqual({ label: category, value: 100 });
+    }
+  });
+});

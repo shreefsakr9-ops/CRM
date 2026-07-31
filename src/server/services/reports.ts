@@ -341,7 +341,7 @@ export async function financialReport(range: DateRange) {
 
   // مجموع كل المصروفات غير المحذوفة ضمن الفترة — بلا أي تصفية بالتصنيف
   // (Expense.category لا يميّز مباشر/غير مباشر أصلًا؛ التصنيفات كلها تشغيلية:
-  // FREELANCER, PRODUCTION, TRANSPORTATION, TOOLS, MEDIA_SPEND, PRINTING, OTHER).
+  // FREELANCER, PRODUCTION, TRANSPORTATION, TOOLS, MEDIA_SPEND, PRINTING, SALARIES, OTHER).
   const totalExpensesMinor = expenses.reduce((s, e) => s + Number(e._sum.amountMinor ?? 0n), 0);
   const collectedMinor = Number(collected._sum.amountMinor ?? 0n);
   // صافي الربح = المحصَّل − المصروفات المباشرة، لنفس نطاق التاريخ [from, to].

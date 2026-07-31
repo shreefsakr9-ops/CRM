@@ -243,6 +243,7 @@ enum ExpenseCategory {
   TOOLS
   MEDIA_SPEND
   PRINTING
+  SALARIES
   OTHER
 }
 
