@@ -15,7 +15,7 @@ Scope       := OWN | TEAM | ALL           يُحدَّد لكل Module لكل Ro
 
 ### الـ Modules
 
-`leads, deals, clients, contacts, services, quotations, contracts, projects, tasks, approvals, files, invoices, payments, expenses, reports, notifications, users, roles, settings, audit`
+`leads, deals, clients, contacts, services, quotations, contracts, projects, tasks, approvals, files, invoices, payments, expenses, ad_wallets, reports, notifications, users, roles, settings, audit`
 
 ### الـ Actions
 
@@ -71,6 +71,7 @@ Scope       := OWN | TEAM | ALL           يُحدَّد لكل Module لكل Ro
 | invoices | VCEDRApX$ (A) | V$ (A) | V$ (T) | — | V$ (T) | — | — | VCEDRApX$ (A) | — |
 | payments | VCEDRX$ (A) | V$ (A) | — | — | V$ (T) | — | — | VCEDRX$ (A) | — |
 | expenses | VCEDRX$P (A) | VCE$ (A) | — | — | — | — | VCE$ (O) | VCEDRX$P (A) | — |
+| ad_wallets | VCEDRAApX$PM (A) | — | — | — | — | — | — | VCEX (A) | — |
 | reports | VX$P (A) | VX (A) | VX$ (T) | — | V (T) | — | — | VX$P (A) | V (T) |
 | notifications | V E (O) | VE (O) | VE (O) | VE (O) | VE (O) | VE (O) | VE (O) | VE (O) | VE (O) |
 | users | M (A) | V (A) | V (T) | — | V (T) | — | — | V (A) | — |
@@ -99,6 +100,7 @@ Scope       := OWN | TEAM | ALL           يُحدَّد لكل Module لكل Ro
 7. `purge` متاح لـ `SUPER_ADMIN` فقط ويتطلب تأكيدًا نصيًا.
 8. `/reports` وقسم «العمليات» في `/dashboard` بيانات على مستوى الشركة/الفريق كاملة بلا أي تصفية بنطاق `OWN` — الوصول إليهما يتطلب نطاق `TEAM` أو `ALL` فعليًا على `reports.view` (أو `projects.view`+`tasks.view` للوحة التحكم)، لا مجرد امتلاك الصلاحية اسميًا. مجرد منح صلاحية بنطاق `OWN` (افتراضيًا أو عبر `UserPermissionOverride`) لا يفتح هاتين الصفحتين.
 9. الإشارة (@) لمستخدم في تعليق تمنحه استثناءً صريحًا لقراءة السجل المُشار فيه بعينه فقط (`isMentionedOn`)، حتى لو كان خارج نطاقه المعتاد أو لم يملك صلاحية `view` على الوحدة أصلًا — الاستثناء لسجل واحد لا للوحدة كاملة.
+10. `ad_wallets` (أرصدة إعلانات العملاء) أمانة لدى الشركة لا دخل ولا مصروف — معزولة معماريًا عن `reports.ts` بالكامل: لا `financialReport()` ولا أي دالة أخرى تقرأ من `AdWalletTransaction`، ولا العكس. لا تُستخدم كإذن ضمني على `clients` أو `expenses` أو `payments`.
 
 ## 5. اختبارات إلزامية للصلاحيات
 

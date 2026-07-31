@@ -29,6 +29,7 @@ enum EntityType {
   INVOICE
   PAYMENT
   EXPENSE
+  AD_WALLET_TRANSACTION
   USER
   ROLE
   SETTING
@@ -411,6 +412,7 @@ model User {
   filesUploaded      FileObject[]
   paymentsRecorded   Payment[]
   expensesRecorded   Expense[]
+  adWalletTransactionsRecorded AdWalletTransaction[]
   savedViews         SavedView[]
   favorites          Favorite[]
   recentItems        RecentItem[]
@@ -835,6 +837,7 @@ model Client {
   followUps      FollowUp[]
   tasks          Task[]
   leads          Lead[]
+  adWalletTransactions AdWalletTransaction[]
 
   @@index([accountManagerId])
   @@index([salesOwnerId])
@@ -1591,6 +1594,35 @@ model Expense {
   @@index([projectId])
   @@index([spentOn])
   @@map("expenses")
+}
+
+enum AdWalletTransactionType {
+  DEPOSIT
+  WITHDRAWAL
+}
+
+/// أمانة لدى الشركة لا دخل ولا مصروف: أموال يرسلها العميل لتُصرف على إعلاناته.
+/// هذا الموديل مقصودًا خارج أي معادلة مالية للشركة (المصروفات المباشرة،
+/// صافي الربح، المحصَّل) — انظر src/server/services/ad-wallets.ts.
+model AdWalletTransaction {
+  id          String                   @id @default(cuid())
+  clientId    String
+  type        AdWalletTransactionType
+  amountMinor BigInt
+  currency    String                   @default("EGP")
+  occurredAt  DateTime                 @db.Timestamptz(3)
+  note        String?
+  createdById String
+  createdAt   DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime                 @updatedAt @db.Timestamptz(3)
+  deletedAt   DateTime?                @db.Timestamptz(3)
+
+  client    Client @relation(fields: [clientId], references: [id])
+  createdBy User   @relation(fields: [createdById], references: [id])
+
+  @@index([clientId])
+  @@index([occurredAt])
+  @@map("ad_wallet_transactions")
 }
 
 model CampaignPerformance {

@@ -8,6 +8,7 @@ import {
   marketingReport,
   parseRange,
 } from '@/server/services/reports';
+import { listAdWalletBalances, adWalletClientOptions } from '@/server/services/ad-wallets';
 import { PageHeader } from '@/components/page-header';
 import { ReportsClient } from './reports-client';
 import { plain } from '@/lib/utils';
@@ -33,12 +34,15 @@ export default async function ReportsPage({
   const range = parseRange(sp.from, sp.to);
 
   const canFinance = can(user, 'reports', 'view_financial');
+  const canAdWallets = can(user, 'ad_wallets', 'view');
 
-  const [sales, operations, financial, marketing] = await Promise.all([
+  const [sales, operations, financial, marketing, adWallets, adWalletClients] = await Promise.all([
     salesReport(range),
     can(user, 'projects', 'view') ? operationsReport(range) : Promise.resolve(null),
     canFinance ? financialReport(range) : Promise.resolve(null),
     marketingReport(range),
+    canAdWallets ? listAdWalletBalances(range) : Promise.resolve(null),
+    canAdWallets ? adWalletClientOptions() : Promise.resolve([]),
   ]);
 
   return (
@@ -53,6 +57,9 @@ export default async function ReportsPage({
         operations={plain(operations) as never}
         financial={plain(financial) as never}
         marketing={plain(marketing) as never}
+        adWallets={plain(adWallets) as never}
+        adWalletClients={adWalletClients}
+        canCreateAdWallet={can(user, 'ad_wallets', 'create')}
         range={{ from: range.from.toISOString().slice(0, 10), to: range.to.toISOString().slice(0, 10) }}
         canExport={can(user, 'reports', 'export')}
       />

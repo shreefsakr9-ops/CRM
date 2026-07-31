@@ -9,6 +9,7 @@ import { KpiCard, KpiGrid } from '@/components/ui/kpi';
 import { formatMoney, formatNumber, formatPercent, formatDuration, formatDate } from '@/lib/format';
 import { label } from '@/i18n/labels';
 import { cn } from '@/lib/utils';
+import { AdWalletsSection, type AdWalletBalanceRow } from './ad-wallets-section';
 
 interface SalesReport {
   showMoney: boolean;
@@ -94,6 +95,9 @@ export function ReportsClient({
   operations,
   financial,
   marketing,
+  adWallets,
+  adWalletClients,
+  canCreateAdWallet,
   range,
   canExport,
 }: {
@@ -101,6 +105,9 @@ export function ReportsClient({
   operations: OperationsReport | null;
   financial: FinancialReport | null;
   marketing: MarketingRow[];
+  adWallets: AdWalletBalanceRow[] | null;
+  adWalletClients: { id: string; name: string }[];
+  canCreateAdWallet: boolean;
   range: { from: string; to: string };
   canExport: boolean;
 }) {
@@ -490,6 +497,10 @@ export function ReportsClient({
                 )}
               </CardBody>
             </Card>
+          )}
+
+          {adWallets !== null && (
+            <AdWalletsSection data={adWallets} clients={adWalletClients} canCreate={canCreateAdWallet} />
           )}
         </div>
       )}

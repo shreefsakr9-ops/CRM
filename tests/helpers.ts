@@ -150,6 +150,7 @@ export async function resetBusinessData() {
     prisma.projectService.deleteMany(),
     prisma.projectMember.deleteMany(),
     prisma.expense.deleteMany(),
+    prisma.adWalletTransaction.deleteMany(),
     prisma.payment.deleteMany(),
     prisma.invoiceItem.deleteMany(),
     prisma.invoice.deleteMany(),
