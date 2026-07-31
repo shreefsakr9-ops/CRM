@@ -44,6 +44,16 @@ export async function fontFaceCss() {
 }`;
 }
 
+/** شعار Blue Point (الرمز فقط) مضمَّنًا كـdata URI — لنفس سبب تضمين الخط: لا اعتماد على الشبكة. */
+let logoCache: string | null = null;
+
+export async function logoDataUri() {
+  if (logoCache) return logoCache;
+  const bytes = await readFile(path.join(process.cwd(), 'public', 'brand', 'logo-mark.png'));
+  logoCache = `data:image/png;base64,${bytes.toString('base64')}`;
+  return logoCache;
+}
+
 let browserPromise: Promise<Browser> | null = null;
 
 async function getBrowser(): Promise<Browser> {

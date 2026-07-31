@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description: 'نظام Blue Point الداخلي لإدارة العملاء والمبيعات والمشاريع والمالية',
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Blue Point OS' },
-  icons: { icon: '/brand/icon.svg', apple: '/brand/icon.svg' },
+  icons: { icon: '/brand/icon.png', apple: '/brand/icon.png' },
   robots: { index: false, follow: false },
 };
 

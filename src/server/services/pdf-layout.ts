@@ -1,6 +1,6 @@
 import 'server-only';
 import { getSettings } from './settings';
-import { fontFaceCss } from './pdf';
+import { fontFaceCss, logoDataUri } from './pdf';
 
 /**
  * الهيكل المشترك لكل مستندات الـPDF (عرض سعر، فاتورة، ملخص عقد).
@@ -52,6 +52,7 @@ export async function documentShell(params: ShellParams): Promise<string> {
   const { lang } = params;
   const rtl = lang === 'ar';
   const fonts = await fontFaceCss();
+  const logo = await logoDataUri();
   const t = LABEL[lang];
 
   const watermarkColor =
@@ -80,7 +81,7 @@ header.doc {
   border-bottom: 3px solid #2C7BE5; padding-bottom: 12px; margin-bottom: 16px;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-mark { width: 42px; height: 42px; }
+.brand-mark { width: 42px; height: 42px; object-fit: contain; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -.3px; }
 .brand p { margin: 2px 0 0; font-size: 10px; color: #5C7189; }
 .doc-meta { text-align: ${rtl ? 'left' : 'right'}; }
@@ -142,11 +143,7 @@ body > *:not(.watermark) { position: relative; z-index: 1; }
 ${params.watermark ? `<div class="watermark">${esc(params.watermark.text)}</div>` : ''}
 <header class="doc">
   <div class="brand">
-    <svg class="brand-mark" viewBox="0 0 64 64">
-      <circle cx="25" cy="26" r="19" fill="#F5333F"/>
-      <circle cx="40" cy="35" r="19" fill="#3FC8F5"/>
-      <path d="M30 34c3-6 9-9 15-9-2 5-6 9-11 11l3 5-6-2-4 4 1-6-5-1z" fill="#0B1A2F"/>
-    </svg>
+    <img class="brand-mark" src="${logo}" alt="" />
     <div>
       <h1>${esc(lang === 'ar' ? company.nameAr : company.nameEn)}</h1>
       <p>${esc(lang === 'ar' ? company.addressAr : company.addressEn)}</p>

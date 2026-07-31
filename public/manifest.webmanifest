@@ -10,6 +10,6 @@
   "dir": "rtl",
   "lang": "ar",
   "icons": [
-    { "src": "/brand/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/brand/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }

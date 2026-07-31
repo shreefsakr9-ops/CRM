@@ -61,7 +61,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     phone: '',
     email: '',
     website: '',
-    logoUrl: '/brand/logo.svg',
+    logoUrl: '/brand/logo-full.png',
     bankDetails: '',
   },
   brand: { navy: '#0B1A2F', blue: '#2C7BE5', cyan: '#3FC8F5', red: '#F5333F' },
