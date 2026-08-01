@@ -27,6 +27,8 @@ export default async function TasksPage({
       assigneeId: sp.assigneeId,
       departmentId: sp.departmentId,
       filter: sp.filter as never,
+      from: sp.from,
+      to: sp.to,
       page: sp.page ? Number(sp.page) : 1,
     }),
     taskFormOptions(),

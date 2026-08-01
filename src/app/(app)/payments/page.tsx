@@ -18,7 +18,7 @@ export default async function PaymentsPage({
   const sp = await searchParams;
   const user = await requirePermission('payments', 'view');
   const [{ rows, total, page, pageSize, totalMinor }, options] = await Promise.all([
-    listPayments({ clientId: sp.clientId, page: sp.page ? Number(sp.page) : 1 }),
+    listPayments({ clientId: sp.clientId, from: sp.from, to: sp.to, page: sp.page ? Number(sp.page) : 1 }),
     financeFormOptions(),
   ]);
 

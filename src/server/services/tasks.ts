@@ -20,6 +20,13 @@ import { isMentionedOn } from './mentions';
 const OWNER_FIELDS = ['creatorId', 'reviewerId'];
 const assigneeCondition = (userId: string) => [{ assignees: { some: { userId } } }];
 
+/** نهاية اليوم المحلي لتاريخ فلتر "إلى" — لتضمين نفس اليوم بالكامل. */
+function endOfDay(dateStr: string) {
+  const d = new Date(dateStr);
+  d.setUTCHours(23, 59, 59, 999);
+  return d;
+}
+
 export const taskSchema = z.object({
   title: z.string().trim().min(2, 'عنوان المهمة مطلوب'),
   description: z.string().trim().optional().nullable(),
@@ -65,6 +72,8 @@ export async function listTasks(filters: {
   assigneeId?: string;
   departmentId?: string;
   filter?: 'mine' | 'overdue' | 'today' | 'week';
+  from?: string;
+  to?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -75,6 +84,29 @@ export async function listTasks(filters: {
   const endOfToday = new Date(now);
   endOfToday.setUTCHours(23, 59, 59, 999);
 
+  // نطاق تاريخ الاستحقاق (dueDate) من الفلتر السريع (اليوم/الأسبوع/متأخرة)
+  // يُدمَج مع فلتر [من/إلى] الصريح بدل أن يُستبدَل به — كلاهما يقيّد نفس
+  // الحقل `dueDate` تحديدًا، لا تاريخ الإنشاء.
+  const quickDueDate: Prisma.DateTimeFilter | undefined =
+    filters.filter === 'overdue'
+      ? { lt: now }
+      : filters.filter === 'today'
+        ? { lte: endOfToday }
+        : filters.filter === 'week'
+          ? { gte: now, lte: new Date(now.getTime() + 7 * 86_400_000) }
+          : undefined;
+
+  const explicitDueDate: Prisma.DateTimeFilter | undefined =
+    filters.from || filters.to
+      ? {
+          ...(filters.from ? { gte: new Date(filters.from) } : {}),
+          ...(filters.to ? { lte: endOfDay(filters.to) } : {}),
+        }
+      : undefined;
+
+  const dueDateFilter =
+    quickDueDate || explicitDueDate ? { ...quickDueDate, ...explicitDueDate } : undefined;
+
   const where: Prisma.TaskWhereInput = {
     deletedAt: null,
     ...scopeWhere(user, 'tasks', OWNER_FIELDS, assigneeCondition(user.id)),
@@ -84,18 +116,10 @@ export async function listTasks(filters: {
     ...(filters.departmentId ? { departmentId: filters.departmentId } : {}),
     ...(filters.assigneeId ? { assignees: { some: { userId: filters.assigneeId } } } : {}),
     ...(filters.filter === 'mine' ? { assignees: { some: { userId: user.id } } } : {}),
-    ...(filters.filter === 'overdue'
-      ? { dueDate: { lt: now }, status: { notIn: ['COMPLETED', 'CANCELLED', 'APPROVED'] } }
+    ...(['overdue', 'today', 'week'].includes(filters.filter ?? '')
+      ? { status: { notIn: ['COMPLETED', 'CANCELLED', 'APPROVED'] } }
       : {}),
-    ...(filters.filter === 'today'
-      ? { dueDate: { lte: endOfToday }, status: { notIn: ['COMPLETED', 'CANCELLED', 'APPROVED'] } }
-      : {}),
-    ...(filters.filter === 'week'
-      ? {
-          dueDate: { gte: now, lte: new Date(now.getTime() + 7 * 86_400_000) },
-          status: { notIn: ['COMPLETED', 'CANCELLED', 'APPROVED'] },
-        }
-      : {}),
+    ...(dueDateFilter ? { dueDate: dueDateFilter } : {}),
     ...(filters.q ? { title: { contains: filters.q, mode: 'insensitive' } } : {}),
   };
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Trash2, CheckCircle2 } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { FiltersBar } from '@/components/filters-bar';
+import { DateRangeFilter } from '@/components/date-range-filter';
 import { ConfirmDialog } from '@/components/ui/drawer';
 import { Avatar, Badge, Button } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
@@ -210,7 +211,9 @@ export function TasksClient({
             { key: 'filter', value: 'overdue', label: 'متأخرة' },
             { key: 'filter', value: 'week', label: 'هذا الأسبوع' },
           ]}
-        />
+        >
+          <DateRangeFilter />
+        </FiltersBar>
       )}
 
       <DataTable

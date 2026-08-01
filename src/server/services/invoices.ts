@@ -39,6 +39,13 @@ export const invoiceSchema = z.object({
 
 export type InvoiceInput = z.infer<typeof invoiceSchema>;
 
+/** نهاية اليوم المحلي لتاريخ فلتر "إلى" — لتضمين نفس اليوم بالكامل. */
+function endOfDay(dateStr: string) {
+  const d = new Date(dateStr);
+  d.setUTCHours(23, 59, 59, 999);
+  return d;
+}
+
 export const paymentSchema = z.object({
   invoiceId: z.string().optional().nullable(),
   clientId: z.string().min(1, 'العميل مطلوب'),
@@ -441,13 +448,27 @@ export async function deletePayment(id: string) {
   });
 }
 
-export async function listPayments(filters: { clientId?: string; page?: number; pageSize?: number }) {
+export async function listPayments(filters: {
+  clientId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}) {
   await requirePermission('payments', 'view');
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = Math.min(100, filters.pageSize ?? 25);
   const where: Prisma.PaymentWhereInput = {
     deletedAt: null,
     ...(filters.clientId ? { clientId: filters.clientId } : {}),
+    ...(filters.from || filters.to
+      ? {
+          paidAt: {
+            ...(filters.from ? { gte: new Date(filters.from) } : {}),
+            ...(filters.to ? { lte: endOfDay(filters.to) } : {}),
+          },
+        }
+      : {}),
   };
 
   const [rows, total, sum] = await Promise.all([
@@ -490,6 +511,8 @@ export type ExpenseInput = z.infer<typeof expenseSchema>;
 export async function listExpenses(filters: {
   projectId?: string;
   category?: string;
+  from?: string;
+  to?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -500,6 +523,14 @@ export async function listExpenses(filters: {
     deletedAt: null,
     ...(filters.projectId ? { projectId: filters.projectId } : {}),
     ...(filters.category ? { category: filters.category as never } : {}),
+    ...(filters.from || filters.to
+      ? {
+          spentOn: {
+            ...(filters.from ? { gte: new Date(filters.from) } : {}),
+            ...(filters.to ? { lte: endOfDay(filters.to) } : {}),
+          },
+        }
+      : {}),
   };
 
   const [rows, total, sum] = await Promise.all([

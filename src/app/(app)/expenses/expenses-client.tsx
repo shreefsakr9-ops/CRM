@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { FiltersBar } from '@/components/filters-bar';
+import { DateRangeFilter } from '@/components/date-range-filter';
 import { Drawer, ConfirmDialog } from '@/components/ui/drawer';
 import { Badge, Button, Field, Input, Select, Textarea } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/toast';
@@ -131,6 +132,7 @@ export function ExpensesClient({
           },
         ]}
       >
+        <DateRangeFilter />
         {perms.canCreate && (
           <Button onClick={() => setCreateOpen(true)} type="button">
             <Plus className="h-4 w-4" />

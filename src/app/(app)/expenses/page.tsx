@@ -21,6 +21,8 @@ export default async function ExpensesPage({
     listExpenses({
       projectId: sp.projectId,
       category: sp.category,
+      from: sp.from,
+      to: sp.to,
       page: sp.page ? Number(sp.page) : 1,
     }),
     financeFormOptions(),
