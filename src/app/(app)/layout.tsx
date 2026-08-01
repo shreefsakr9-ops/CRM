@@ -55,6 +55,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         roleLabel: ROLE_LABELS[user.roleKey as RoleKey]?.ar ?? user.roleKey,
       }}
       quickCreate={quickCreate}
+      locale={user.locale === 'en' ? 'en' : 'ar'}
     >
       {children}
     </AppShell>

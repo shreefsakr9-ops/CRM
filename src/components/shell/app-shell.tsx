@@ -10,12 +10,14 @@ export function AppShell({
   counts,
   user,
   quickCreate,
+  locale = 'ar',
   children,
 }: {
   sections: NavSection[];
   counts: { notifications: number; myTasks: number; approvals: number };
   user: { name: string; email: string; avatarUrl: string | null; roleLabel: string };
   quickCreate: { href: string; label: string }[];
+  locale?: 'ar' | 'en';
   children: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -27,6 +29,7 @@ export function AppShell({
         counts={counts}
         open={open}
         onClose={() => setOpen(false)}
+        locale={locale}
       />
       <div className="lg:ms-[var(--bp-sidebar-w)]">
         <Topbar

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ToastProvider } from '@/components/ui/toast';
+import { getCurrentUser } from '@/server/auth/session';
 
 export const metadata: Metadata = {
   title: {
@@ -21,9 +22,13 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const user = await getCurrentUser();
+  const locale = user?.locale === 'en' ? 'en' : 'ar';
+  const dir = locale === 'en' ? 'ltr' : 'rtl';
+
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning>
+    <html lang={locale} dir={dir} suppressHydrationWarning>
       <body>
         <ToastProvider>{children}</ToastProvider>
       </body>

@@ -78,10 +78,13 @@ export function ProfileClient({
             <Field label="رقم الهاتف">
               <Input name="phone" defaultValue={me.phone ?? ''} dir="ltr" />
             </Field>
-            <Field label="لغة الواجهة">
+            <Field
+              label="لغة الواجهة"
+              hint="يتغيّر اتجاه الصفحة (RTL/LTR) وأسماء التنقل الجانبي فقط حاليًا — بقية النصوص لسه عربية، والترجمة الكاملة قيد التطوير"
+            >
               <Select name="locale" defaultValue={me.locale}>
                 <option value="ar">العربية</option>
-                <option value="en">English</option>
+                <option value="en">English (جزئي)</option>
               </Select>
             </Field>
             <Field label="المنطقة الزمنية" hint="تُعرض كل التواريخ حسب هذه المنطقة">
