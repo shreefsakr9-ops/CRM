@@ -41,6 +41,13 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      # Next.js standalone server.js يستخدم `process.env.HOSTNAME || '0.0.0.0'`
+      # كعنوان استماع — وDocker يضبط HOSTNAME تلقائيًا لكل حاوية = معرّف
+      # الحاوية نفسها، فيغلب القيمة الافتراضية 0.0.0.0 ويجعل السيرفر يستمع
+      # على عنوان لا يمكن الوصول إليه عبر 127.0.0.1 من نفس الحاوية (أو يفشل
+      # ببدء التشغيل أصلًا لو تعذّر حل المعرّف كاسم مضيف). ضبطه هنا صراحةً
+      # يغلب القيمة التلقائية ويعيد السلوك المقصود: استماع على كل الواجهات.
+      HOSTNAME: '0.0.0.0'
       DATABASE_URL: ${DATABASE_URL}
       APP_URL: ${APP_URL}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET مطلوب}
@@ -79,6 +86,11 @@ services:
     command: ['npx', 'tsx', '--conditions=react-server', 'src/worker/index.ts']
     environment:
       NODE_ENV: production
+      # نفس سبب ضبطها في app: القيمة التلقائية من Docker (معرّف الحاوية) تغلب
+      # افتراضي Next.js `0.0.0.0`. الـWorker لا يشغّل سيرفر HTTP إطلاقًا، لكن
+      # نضبطها هنا أيضًا للاتساق ولمنع نفس الفخ لو أي أداة داخل نفس الصورة
+      # قرأت HOSTNAME مستقبلًا.
+      HOSTNAME: '0.0.0.0'
       DATABASE_URL: ${DATABASE_URL}
       APP_URL: ${APP_URL}
       SESSION_SECRET: ${SESSION_SECRET}
@@ -98,6 +110,13 @@ services:
       db: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
     networks: [internal]
+    # الصورة تحمل HEALTHCHECK على مستوى الـDockerfile (curl على 127.0.0.1:3000
+    # /api/health) لأن نفس الصورة تُبنى لخدمة app. الـWorker لا يشغّل سيرفر
+    # HTTP إطلاقًا فيرث هذا الفحص بلا معنى ويظهر دائمًا unhealthy مهما أُصلح
+    # HOSTNAME — نعطّله هنا صراحةً؛ لا شيء في هذا الملف يعتمد على
+    # service_healthy لخدمة worker أصلًا.
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:
