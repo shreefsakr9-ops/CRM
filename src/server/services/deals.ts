@@ -233,14 +233,20 @@ export async function updateDeal(id: string, input: DealInput) {
   });
   if (!before) throw NotFound('الصفقة غير موجودة');
 
+  // من لا يملك view_financial لا يرى قيمة الصفقة أصلًا — نموذج التعديل عنده
+  // يُعبَّأ بصفر، فتمرير هذه القيمة كما هي يمحو القيمة الحقيقية للصفقة فعليًا
+  // عند أي تعديل عادي. نحافظ على القيمة الحالية بدل الثقة بما أُرسل من نموذج
+  // لا يراها صاحبه.
+  const canEditValue = can(user, 'deals', 'view_financial');
+
   const updated = await prisma.deal.update({
     where: { id },
     data: {
       title: data.title,
       clientId: data.clientId || null,
       serviceId: data.serviceId || null,
-      valueMinor: BigInt(Math.round(data.value * 100)),
-      currency: data.currency,
+      valueMinor: canEditValue ? BigInt(Math.round(data.value * 100)) : before.valueMinor,
+      currency: canEditValue ? data.currency : before.currency,
       ownerId: can(user, 'deals', 'assign') ? (data.ownerId ?? before.ownerId) : before.ownerId,
       expectedCloseDate: data.expectedCloseDate ? new Date(data.expectedCloseDate) : null,
       competitor: data.competitor || null,

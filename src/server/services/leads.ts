@@ -335,6 +335,12 @@ export async function updateLead(id: string, input: LeadInput) {
     ? (data.assignedToId ?? before.assignedToId)
     : before.assignedToId;
 
+  // من لا يرى القيمة التقديرية أصلًا (نفس شرط العرض في getLead/listLeads) —
+  // نموذج التعديل عنده يُعبَّأ بصفر، فتمرير هذه القيمة كما هي يمحو القيمة
+  // الحقيقية فعليًا عند أي تعديل عادي. نحافظ على القيمة الحالية بدل الثقة
+  // بما أُرسل من نموذج لا يراها صاحبه.
+  const canEditValue = can(user, 'leads', 'view_financial') || can(user, 'deals', 'view_financial');
+
   const updated = await prisma.lead.update({
     where: { id },
     data: {
@@ -352,8 +358,8 @@ export async function updateLead(id: string, input: LeadInput) {
       sourceId: data.sourceId || null,
       campaign: data.campaign || null,
       interestedServiceId: data.interestedServiceId || null,
-      estimatedValueMinor: BigInt(Math.round(data.estimatedValue * 100)),
-      currency: data.currency,
+      estimatedValueMinor: canEditValue ? BigInt(Math.round(data.estimatedValue * 100)) : before.estimatedValueMinor,
+      currency: canEditValue ? data.currency : before.currency,
       assignedToId,
       priority: data.priority,
       score: data.score,

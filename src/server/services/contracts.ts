@@ -183,6 +183,12 @@ export async function updateContract(id: string, input: ContractInput) {
   });
   if (!before) throw NotFound('العقد غير موجود');
 
+  // من لا يملك view_financial لا يرى القيمة الحالية أصلًا — نموذج التعديل عنده
+  // يُعبَّأ بصفر، فتمرير هذه القيمة كما هي يمحو القيمة الحقيقية للعقد فعليًا
+  // عند أي تعديل عادي (تغيير الحالة، تاريخ التجديد، إلخ). نحافظ على القيمة
+  // الحالية في قاعدة البيانات بدل الثقة بما أُرسل من نموذج لا يراها صاحبه.
+  const canEditValue = can(user, 'contracts', 'view_financial');
+
   const updated = await prisma.$transaction(async (tx) => {
     await tx.contractService.deleteMany({ where: { contractId: id } });
     return tx.contract.update({
@@ -195,8 +201,8 @@ export async function updateContract(id: string, input: ContractInput) {
         endDate: new Date(data.endDate),
         renewalDate: data.renewalDate ? new Date(data.renewalDate) : null,
         autoRenew: data.autoRenew,
-        valueMinor: BigInt(Math.round(data.value * 100)),
-        currency: data.currency,
+        valueMinor: canEditValue ? BigInt(Math.round(data.value * 100)) : before.valueMinor,
+        currency: canEditValue ? data.currency : before.currency,
         paymentTerms: data.paymentTerms || null,
         ownerId: data.ownerId || before.ownerId,
         status: data.status,

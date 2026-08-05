@@ -280,6 +280,9 @@ function ContractForm({
     initial?.quotationId ?? defaults.quotationId ?? '',
   );
   const [clientId, setClientId] = React.useState(initial?.clientId ?? defaults.clientId ?? '');
+  // تعديل موجود بقيمة محجوبة (null) يعني أن المستخدم لا يملك صلاحية رؤيتها —
+  // نقفل الحقل بدل تعبئته بصفر قابل للحفظ والذي يمحو القيمة الحقيقية فعليًا.
+  const valueLocked = initial !== null && initial.valueMinor === null;
   const [value, setValue] = React.useState(
     initial?.valueMinor != null ? String(initial.valueMinor / 100) : '0',
   );
@@ -369,7 +372,11 @@ function ContractForm({
             defaultValue={initial?.renewalDate?.slice(0, 10) ?? ''}
           />
         </Field>
-        <Field label="قيمة العقد" required>
+        <Field
+          label="قيمة العقد"
+          required={!valueLocked}
+          hint={valueLocked ? 'لا تملك صلاحية عرض أو تعديل القيمة المالية' : undefined}
+        >
           <Input
             type="number"
             min={0}
@@ -377,7 +384,8 @@ function ContractForm({
             dir="ltr"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            required
+            required={!valueLocked}
+            disabled={valueLocked}
           />
         </Field>
         <Field label="العملة">

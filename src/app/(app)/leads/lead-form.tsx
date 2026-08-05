@@ -67,6 +67,9 @@ export function LeadForm({
   const [duplicates, setDuplicates] = React.useState<Duplicate[]>([]);
   const [forceCreate, setForceCreate] = React.useState(false);
   const formRef = React.useRef<HTMLFormElement>(null);
+  // تعديل عميل محتمل موجود بقيمة محجوبة (null) يعني أن المستخدم لا يملك صلاحية
+  // رؤيتها — نقفل الحقل بدل تعبئته بصفر قابل للحفظ يمحو القيمة الحقيقية فعليًا.
+  const estimatedValueLocked = initial !== null && initial.estimatedValueMinor == null;
 
   const checkDuplicates = async () => {
     const fd = new FormData(formRef.current!);
@@ -204,7 +207,10 @@ export function LeadForm({
                   ))}
                 </Select>
               </Field>
-              <Field label="الميزانية التقديرية">
+              <Field
+                label="الميزانية التقديرية"
+                hint={estimatedValueLocked ? 'لا تملك صلاحية عرض أو تعديل القيمة المالية' : undefined}
+              >
                 <Input
                   name="estimatedValue"
                   type="number"
@@ -212,6 +218,7 @@ export function LeadForm({
                   step="0.01"
                   dir="ltr"
                   defaultValue={initial?.estimatedValueMinor ? initial.estimatedValueMinor / 100 : 0}
+                  disabled={estimatedValueLocked}
                 />
               </Field>
               <Field label="العملة">

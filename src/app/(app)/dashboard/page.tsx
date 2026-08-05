@@ -161,13 +161,15 @@ export default async function DashboardPage() {
           </KpiGrid>
 
           <div className="grid gap-3 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
-              <CardHeader title="قيمة الصفقات المفتوحة حسب المرحلة" subtitle="بالجنيه المصري" />
-              <CardBody>
-                <BarChart data={sales.byStage} format="money-compact" />
-              </CardBody>
-            </Card>
-            <Card>
+            {sales.showMoney && (
+              <Card className="lg:col-span-2">
+                <CardHeader title="قيمة الصفقات المفتوحة حسب المرحلة" subtitle="بالجنيه المصري" />
+                <CardBody>
+                  <BarChart data={sales.byStage} format="money-compact" />
+                </CardBody>
+              </Card>
+            )}
+            <Card className={sales.showMoney ? '' : 'lg:col-span-3'}>
               <CardHeader title="مؤشرات المبيعات" />
               <CardBody className="space-y-3.5">
                 <Metric label="معدل التحويل" value={formatPercent(sales.conversionRate)} />
@@ -180,23 +182,25 @@ export default async function DashboardPage() {
                   }
                 />
                 <Metric label="صفقات ناجحة / خاسرة" value={`${formatNumber(sales.wonCount)} / ${formatNumber(sales.lostCount)}`} />
-                <div>
-                  <div className="mb-1 flex items-center justify-between text-[11px]">
-                    <span className="text-ink-faint">تحقيق التارجت</span>
-                    <span className="num text-ink">
-                      {money(sales.achievedMinor)} / {money(sales.targetMinor)}
-                    </span>
+                {sales.showMoney && sales.achievedMinor !== null && sales.targetMinor !== null && (
+                  <div>
+                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                      <span className="text-ink-faint">تحقيق التارجت</span>
+                      <span className="num text-ink">
+                        {money(sales.achievedMinor)} / {money(sales.targetMinor)}
+                      </span>
+                    </div>
+                    <Progress
+                      value={sales.targetMinor > 0 ? (sales.achievedMinor / sales.targetMinor) * 100 : 0}
+                      showLabel
+                      tone={
+                        sales.targetMinor > 0 && sales.achievedMinor / sales.targetMinor >= 1
+                          ? 'ok'
+                          : 'brand'
+                      }
+                    />
                   </div>
-                  <Progress
-                    value={sales.targetMinor > 0 ? (sales.achievedMinor / sales.targetMinor) * 100 : 0}
-                    showLabel
-                    tone={
-                      sales.targetMinor > 0 && sales.achievedMinor / sales.targetMinor >= 1
-                        ? 'ok'
-                        : 'brand'
-                    }
-                  />
-                </div>
+                )}
               </CardBody>
             </Card>
           </div>

@@ -32,14 +32,15 @@ export interface SalesBlock {
   uncontacted: number;
   followUpsDue: number;
   followUpsOverdue: number;
-  pipelineValueMinor: number;
-  weightedForecastMinor: number;
+  showMoney: boolean;
+  pipelineValueMinor: number | null;
+  weightedForecastMinor: number | null;
   wonCount: number;
   lostCount: number;
   avgResponseHours: number | null;
   conversionRate: number | null;
-  targetMinor: number;
-  achievedMinor: number;
+  targetMinor: number | null;
+  achievedMinor: number | null;
   byStage: { label: string; value: number }[];
 }
 
@@ -189,6 +190,7 @@ async function employeeBlock(user: CurrentUser, now: Date): Promise<EmployeeBloc
 async function salesBlock(user: CurrentUser, now: Date, startOfMonth: Date): Promise<SalesBlock> {
   const leadScope = scopeWhere(user, 'leads', ['assignedToId', 'createdById']);
   const dealScope = scopeWhere(user, 'deals', ['ownerId', 'createdById']);
+  const showMoney = can(user, 'deals', 'view_financial');
 
   const [newLeads, uncontacted, followUpsDue, followUpsOverdue, openDeals, won, lost, leadTotal, wonFromLeads] =
     await Promise.all([
@@ -258,17 +260,18 @@ async function salesBlock(user: CurrentUser, now: Date, startOfMonth: Date): Pro
     uncontacted,
     followUpsDue,
     followUpsOverdue,
-    pipelineValueMinor: Number(pipelineValue),
-    weightedForecastMinor: Number(forecast),
+    showMoney,
+    pipelineValueMinor: showMoney ? Number(pipelineValue) : null,
+    weightedForecastMinor: showMoney ? Number(forecast) : null,
     wonCount: won,
     lostCount: lost,
     avgResponseHours,
     conversionRate: leadTotal > 0 ? (wonFromLeads / leadTotal) * 100 : null,
-    targetMinor: Number(target._sum.salesTargetMinor ?? 0n),
-    achievedMinor: Number(wonRevenue._sum.valueMinor ?? 0n),
-    byStage: Array.from(byStageMap, ([label, value]) => ({ label, value })).sort(
-      (a, b) => b.value - a.value,
-    ),
+    targetMinor: showMoney ? Number(target._sum.salesTargetMinor ?? 0n) : null,
+    achievedMinor: showMoney ? Number(wonRevenue._sum.valueMinor ?? 0n) : null,
+    byStage: showMoney
+      ? Array.from(byStageMap, ([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
+      : [],
   };
 }
 
